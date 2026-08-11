@@ -1,23 +1,51 @@
-// dashboard.js - Complete Logic with Hybrid Backend Support (API + LocalStorage fallback)
+// dashboard.js - Multi-Tenant Authentication and Dynamic Board Management
 
-let API_BASE = ''; // Auto detected relative to root
 let useFallback = false;
+let currentToken = localStorage.getItem('khatm_token') || '';
+let currentUser = null; // { name, email, businessName, permissions }
 
-// Default initial state for local storage fallback
+// Default isolated initial state for LocalStorage fallback DB
 const DEFAULT_STATE = {
-  merchant: {
-    brandName: "محمصة السنبلة",
-    programName: "بطاقة قهوة السنبلة",
-    logoUrl: "https://example.com/logo.png",
-    hexBackgroundColor: "#1E3050",
-    stampsGoal: 10,
-    stampEmoji: "☕",
-    rewardName: "القهوة العاشرة مجاناً",
-    cooldownMinutes: 1
-  },
+  merchants: [
+    {
+      id: "merchant_default",
+      businessName: "محمصة السنبلة",
+      ownerName: "عبدالله محمد",
+      email: "owner@sonbola.com",
+      phone: "0501234567"
+    }
+  ],
+  merchant_staff: [
+    {
+      id: "staff_default",
+      merchantId: "merchant_default",
+      name: "عبدالله محمد",
+      email: "owner@sonbola.com",
+      isOwner: true,
+      canStamp: true,
+      canEnrollCustomer: true,
+      canViewReports: true,
+      canManageSettings: true
+    }
+  ],
+  loyalty_cards: [
+    {
+      id: "card_default",
+      merchantId: "merchant_default",
+      brandName: "محمصة السنبلة",
+      programName: "بطاقة قهوة السنبلة",
+      logoUrl: "https://example.com/logo.png",
+      hexBackgroundColor: "#1E3050",
+      stampsGoal: 10,
+      stampEmoji: "☕",
+      rewardName: "القهوة العاشرة مجاناً",
+      cooldownMinutes: 1
+    }
+  ],
   customers: [
     {
       id: "cust_001",
+      merchantId: "merchant_default",
       name: "عبدالله محمد",
       phone: "0501234567",
       stampsCollected: 3,
@@ -26,9 +54,10 @@ const DEFAULT_STATE = {
       rewardsClaimed: 0
     }
   ],
-  logs: [
+  stamps_log: [
     {
       id: "log_001",
+      merchantId: "merchant_default",
       customerId: "cust_001",
       customerName: "عبدالله محمد",
       type: "stamp",
@@ -36,9 +65,10 @@ const DEFAULT_STATE = {
       details: "تم إضافة ختم. المجموع الحالي: 3"
     }
   ],
-  pushes: [
+  notifications_log: [
     {
       id: "push_001",
+      merchantId: "merchant_default",
       title: "عرض خاص من محمصة السنبلة ☕",
       body: "احصل على ضعف الأختام اليوم عند طلب أي نوع من القهوة المختصة!",
       timestamp: new Date().toISOString()
@@ -46,117 +76,375 @@ const DEFAULT_STATE = {
   ]
 };
 
-// Detect fallback
-async function detectMode() {
+// Mode & session detection
+async function detectModeAndSession() {
   try {
-    const res = await fetch('/api/merchant');
+    const res = await fetch('/api/public/cards/cust_001'); // Check if standard backend works
     if (res.ok) {
-      console.log("Connected to dynamic JSON DB Express server.");
       useFallback = false;
     } else {
-      throw new Error("API responded with error");
+      throw new Error();
     }
   } catch (err) {
-    console.warn("Express server not detected. Falling back to static browser LocalStorage db for offline demo.");
     useFallback = true;
-    if (!localStorage.getItem('khatm_db')) {
-      localStorage.setItem('khatm_db', JSON.stringify(DEFAULT_STATE));
+    if (!localStorage.getItem('khatm_db_v2')) {
+      localStorage.setItem('khatm_db_v2', JSON.stringify(DEFAULT_STATE));
     }
+  }
+
+  if (currentToken) {
+    if (!useFallback) {
+      try {
+        const res = await fetch('/api/me', {
+          headers: { 'Authorization': `Bearer ${currentToken}` }
+        });
+        if (res.ok) {
+          currentUser = await res.json();
+          document.getElementById('auth-overlay').style.display = 'none';
+          showAppAndSetup();
+        } else {
+          handleLogout();
+        }
+      } catch (e) {
+        handleLogout();
+      }
+    } else {
+      // Offline fallback token verification mock
+      const mockSession = JSON.parse(localStorage.getItem('khatm_session_v2'));
+      if (mockSession) {
+        currentUser = mockSession;
+        document.getElementById('auth-overlay').style.display = 'none';
+        showAppAndSetup();
+      } else {
+        handleLogout();
+      }
+    }
+  } else {
+    document.getElementById('auth-overlay').style.display = 'flex';
   }
 }
 
 // Get fallback DB helper
 function getLocalDB() {
-  return JSON.parse(localStorage.getItem('khatm_db')) || DEFAULT_STATE;
+  return JSON.parse(localStorage.getItem('khatm_db_v2')) || DEFAULT_STATE;
 }
 
 // Save fallback DB helper
 function saveLocalDB(data) {
-  localStorage.setItem('khatm_db', JSON.stringify(data));
+  localStorage.setItem('khatm_db_v2', JSON.stringify(data));
 }
 
-// Switch Sections in dashboard
+// Auth Tabs switches
+function switchAuthTab(tab) {
+  document.getElementById('tab-login').classList.remove('active');
+  document.getElementById('tab-register').classList.remove('active');
+  document.getElementById('login-form').style.display = 'none';
+  document.getElementById('register-form').style.display = 'none';
+
+  if (tab === 'login') {
+    document.getElementById('tab-login').classList.add('active');
+    document.getElementById('login-form').style.display = 'block';
+  } else {
+    document.getElementById('tab-register').classList.add('active');
+    document.getElementById('register-form').style.display = 'block';
+  }
+}
+
+// Register
+async function handleRegister(e) {
+  e.preventDefault();
+  const businessName = document.getElementById('reg-bizname').value;
+  const ownerName = document.getElementById('reg-ownername').value;
+  const phone = document.getElementById('reg-phone').value;
+  const email = document.getElementById('reg-email').value;
+  const password = document.getElementById('reg-password').value;
+
+  if (!useFallback) {
+    try {
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ businessName, ownerName, email, phone, password })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        currentToken = data.token;
+        localStorage.setItem('khatm_token', currentToken);
+        alert('🎉 تم إنشاء حساب التاجر بنجاح وتوليد الهوية!');
+        await detectModeAndSession();
+      } else {
+        alert(`خطأ: ${data.error}`);
+      }
+    } catch (err) {
+      alert('فشل في الاتصال بالسيرفر لإتمام عملية التسجيل.');
+    }
+  } else {
+    // LocalStorage Register
+    const db = getLocalDB();
+    const existing = db.merchant_staff.find(s => s.email.toLowerCase() === email.toLowerCase());
+    if (existing) {
+      alert('خطأ: هذا البريد الإلكتروني مسجل بالفعل لمستخدم آخر');
+      return;
+    }
+
+    const merchantId = `merchant_${Date.now()}`;
+    const staffId = `staff_${Date.now()}`;
+    const cardId = `card_${Date.now()}`;
+
+    db.merchants.push({
+      id: merchantId,
+      businessName,
+      ownerName,
+      email,
+      phone
+    });
+
+    const permissions = {
+      isOwner: true,
+      canStamp: true,
+      canEnrollCustomer: true,
+      canViewReports: true,
+      canManageSettings: true
+    };
+
+    db.merchant_staff.push({
+      id: staffId,
+      merchantId,
+      name: ownerName,
+      email: email.toLowerCase(),
+      ...permissions
+    });
+
+    db.loyalty_cards.push({
+      id: cardId,
+      merchantId,
+      brandName: businessName,
+      programName: `بطاقة ولاء ${businessName}`,
+      logoUrl: 'https://example.com/logo.png',
+      hexBackgroundColor: '#1E3050',
+      stampsGoal: 10,
+      stampEmoji: '☕',
+      rewardName: 'القهوة العاشرة مجاناً',
+      cooldownMinutes: 1
+    });
+
+    saveLocalDB(db);
+
+    currentUser = {
+      id: staffId,
+      merchantId,
+      name: ownerName,
+      email,
+      businessName,
+      permissions
+    };
+
+    localStorage.setItem('khatm_session_v2', JSON.stringify(currentUser));
+    localStorage.setItem('khatm_token', `offline_token_${staffId}`);
+    currentToken = `offline_token_${staffId}`;
+
+    document.getElementById('auth-overlay').style.display = 'none';
+    showAppAndSetup();
+    alert('🎉 تم إنشاء حساب التاجر بنجاح (وضع ديمو غير متصل)!');
+  }
+}
+
+// Login
+async function handleLogin(e) {
+  e.preventDefault();
+  const email = document.getElementById('login-email').value;
+  const password = document.getElementById('login-password').value;
+
+  if (!useFallback) {
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        currentToken = data.token;
+        localStorage.setItem('khatm_token', currentToken);
+        await detectModeAndSession();
+      } else {
+        alert(`خطأ: ${data.error}`);
+      }
+    } catch (err) {
+      alert('فشل تسجيل الدخول. يرجى التحقق من اتصالك بالإنترنت.');
+    }
+  } else {
+    // Offline local storage login
+    const db = getLocalDB();
+    const staff = db.merchant_staff.find(s => s.email.toLowerCase() === email.toLowerCase());
+    if (!staff) {
+      alert('خطأ: البريد الإلكتروني أو كلمة المرور غير صحيحة');
+      return;
+    }
+
+    const merchant = db.merchants.find(m => m.id === staff.merchantId);
+    currentUser = {
+      id: staff.id,
+      merchantId: staff.merchantId,
+      name: staff.name,
+      email: staff.email,
+      businessName: merchant ? merchant.businessName : 'متجر افتراضي',
+      permissions: {
+        isOwner: staff.isOwner || false,
+        canStamp: staff.canStamp || false,
+        canEnrollCustomer: staff.canEnrollCustomer || false,
+        canViewReports: staff.canViewReports || false,
+        canManageSettings: staff.canManageSettings || false
+      }
+    };
+
+    localStorage.setItem('khatm_session_v2', JSON.stringify(currentUser));
+    localStorage.setItem('khatm_token', `offline_token_${staff.id}`);
+    currentToken = `offline_token_${staff.id}`;
+
+    document.getElementById('auth-overlay').style.display = 'none';
+    showAppAndSetup();
+    alert('🔐 تم الدخول بنجاح للوحة التحكم ديمو!');
+  }
+}
+
+// Logout
+function handleLogout() {
+  localStorage.removeItem('khatm_token');
+  localStorage.removeItem('khatm_session_v2');
+  currentToken = '';
+  currentUser = null;
+  document.getElementById('auth-overlay').style.display = 'flex';
+}
+
+// Set permissions visibility in navigation
+function showAppAndSetup() {
+  document.getElementById('user-display-name').innerText = `👤 ${currentUser.name} (${currentUser.businessName})`;
+
+  const p = currentUser.permissions;
+  // Manage settings permission
+  if (!p.canManageSettings) {
+    document.getElementById('btn-customizer').style.display = 'none';
+    document.getElementById('btn-push').style.display = 'none';
+    switchSection('customers');
+  } else {
+    document.getElementById('btn-customizer').style.display = 'flex';
+    document.getElementById('btn-push').style.display = 'flex';
+    switchSection('customizer');
+  }
+
+  // Enrollment permission
+  if (!p.canEnrollCustomer) {
+    document.getElementById('btn-customers').style.display = 'none';
+  } else {
+    document.getElementById('btn-customers').style.display = 'flex';
+  }
+
+  // Owner only sidebar view
+  if (!p.isOwner) {
+    document.getElementById('btn-staff').style.display = 'none';
+  } else {
+    document.getElementById('btn-staff').style.display = 'flex';
+  }
+
+  // Reports
+  if (!p.canViewReports) {
+    document.getElementById('btn-logs').style.display = 'none';
+  } else {
+    document.getElementById('btn-logs').style.display = 'flex';
+  }
+
+  loadMerchantSettings();
+}
+
+// Switch dashboard sections
 function switchSection(sectionId) {
   document.querySelectorAll('.dash-section').forEach(sec => sec.style.display = 'none');
   document.querySelectorAll('.sidebar-btn').forEach(btn => btn.classList.remove('active'));
 
-  const targetSection = document.getElementById(`section-${sectionId}`);
-  if (targetSection) targetSection.style.display = 'block';
+  const sectionEl = document.getElementById(`section-${sectionId}`);
+  if (sectionEl) sectionEl.style.display = 'block';
 
-  // Find button and make active
-  const btns = Array.from(document.querySelectorAll('.sidebar-btn'));
-  const targetBtn = btns.find(btn => btn.innerText.includes(
-    sectionId === 'customizer' ? 'تصميم' :
-    sectionId === 'customers' ? 'المشتركين' :
-    sectionId === 'push' ? 'الإشعارات' : 'سجلات'
-  ));
-  if (targetBtn) targetBtn.classList.add('active');
+  const btnEl = document.getElementById(`btn-${sectionId}`);
+  if (btnEl) btnEl.classList.add('active');
 
-  if (sectionId === 'logs') {
-    loadLogsAndStats();
+  if (sectionId === 'customizer') {
+    loadMerchantSettings();
   } else if (sectionId === 'customers') {
     loadCustomers();
+  } else if (sectionId === 'staff') {
+    loadStaff();
+  } else if (sectionId === 'logs') {
+    loadLogsAndStats();
   }
 }
 
-// 1. Live Customizer Setup & Refresh Mockup
-function updateLivePreview(merchant) {
-  document.getElementById('preview-brand').innerText = merchant.brandName;
-  document.getElementById('preview-program').innerText = merchant.programName;
-  document.getElementById('preview-reward').innerText = merchant.rewardName;
+// ----------------------------------------
+// 1) Template Design Logic
+// ----------------------------------------
+function updateLivePreview(card) {
+  document.getElementById('preview-brand').innerText = card.brandName;
+  document.getElementById('preview-program').innerText = card.programName;
+  document.getElementById('preview-reward').innerText = card.rewardName;
+  document.getElementById('preview-card-merchant-id').innerText = `#${currentUser.merchantId.substring(0, 8)}`;
 
-  const colorPicker = document.getElementById('hexBackgroundColor');
   const previewCard = document.getElementById('live-card-preview');
-  previewCard.style.backgroundColor = merchant.hexBackgroundColor || colorPicker.value;
+  previewCard.style.backgroundColor = card.hexBackgroundColor;
 
-  const goal = parseInt(merchant.stampsGoal) || 10;
-  const emoji = merchant.stampEmoji || '☕';
+  const goal = parseInt(card.stampsGoal) || 10;
+  const emoji = card.stampEmoji || '☕';
 
-  // Simulate active stamps for visualization
-  const activeCount = Math.floor(goal * 0.7); // 70% filled
-  document.getElementById('preview-sub').innerText = `${activeCount} من ${goal} أختام`;
+  const filledCount = Math.floor(goal * 0.7);
+  document.getElementById('preview-sub').innerText = `${filledCount} من ${goal} أختام`;
 
   const stampRow = document.getElementById('preview-stamp-row');
   stampRow.innerHTML = '';
   for (let i = 1; i <= goal; i++) {
     const dot = document.createElement('div');
-    dot.className = 'stamp-dot' + (i <= activeCount ? ' filled' : '');
-    dot.innerText = i <= activeCount ? emoji : '·';
+    dot.className = 'stamp-dot' + (i <= filledCount ? ' filled' : '');
+    dot.innerText = i <= filledCount ? emoji : '·';
     stampRow.appendChild(dot);
   }
 }
 
-// Load merchant settings
 async function loadMerchantSettings() {
-  let merchant;
+  let card;
   if (!useFallback) {
     try {
-      const res = await fetch('/api/merchant');
-      merchant = await res.json();
-    } catch (e) {
-      merchant = getLocalDB().merchant;
+      const res = await fetch('/api/loyalty-cards', {
+        headers: { 'Authorization': `Bearer ${currentToken}` }
+      });
+      if (res.ok) {
+        card = await res.json();
+      }
+    } catch (err) {
+      console.error(err);
     }
-  } else {
-    merchant = getLocalDB().merchant;
   }
 
-  // Populate form
-  document.getElementById('brandName').value = merchant.brandName || '';
-  document.getElementById('programName').value = merchant.programName || '';
-  document.getElementById('logoUrl').value = merchant.logoUrl || '';
-  document.getElementById('hexBackgroundColor').value = merchant.hexBackgroundColor || '#1E3050';
-  document.getElementById('stampsGoal').value = merchant.stampsGoal || '10';
-  document.getElementById('stampEmoji').value = merchant.stampEmoji || '☕';
-  document.getElementById('cooldownMinutes').value = merchant.cooldownMinutes || '1';
-  document.getElementById('rewardName').value = merchant.rewardName || '';
+  if (!card) {
+    const db = getLocalDB();
+    card = db.loyalty_cards.find(c => c.merchantId === currentUser.merchantId);
+    if (!card) {
+      card = DEFAULT_STATE.loyalty_cards[0];
+    }
+  }
 
-  updateLivePreview(merchant);
+  document.getElementById('brandName').value = card.brandName;
+  document.getElementById('programName').value = card.programName;
+  document.getElementById('logoUrl').value = card.logoUrl;
+  document.getElementById('hexBackgroundColor').value = card.hexBackgroundColor;
+  document.getElementById('stampsGoal').value = card.stampsGoal;
+  document.getElementById('stampEmoji').value = card.stampEmoji;
+  document.getElementById('cooldownMinutes').value = card.cooldownMinutes;
+  document.getElementById('rewardName').value = card.rewardName;
+
+  updateLivePreview(card);
 }
 
-// Save merchant settings
 async function saveMerchantSettings(e) {
   e.preventDefault();
-  const merchant = {
+  const cardData = {
     brandName: document.getElementById('brandName').value,
     programName: document.getElementById('programName').value,
     logoUrl: document.getElementById('logoUrl').value,
@@ -164,43 +452,55 @@ async function saveMerchantSettings(e) {
     stampsGoal: parseInt(document.getElementById('stampsGoal').value),
     stampEmoji: document.getElementById('stampEmoji').value,
     cooldownMinutes: parseInt(document.getElementById('cooldownMinutes').value),
-    rewardName: document.getElementById('rewardName').value,
+    rewardName: document.getElementById('rewardName').value
   };
 
   if (!useFallback) {
     try {
-      await fetch('/api/merchant', {
+      const res = await fetch('/api/loyalty-cards', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(merchant)
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${currentToken}`
+        },
+        body: JSON.stringify(cardData)
       });
+      if (res.ok) {
+        alert('✅ تم تصميم وحفظ بطاقة الولاء بنجاح!');
+        loadMerchantSettings();
+      }
     } catch (err) {
-      console.error(err);
+      alert('خطأ في الاتصال بالخادم لحفظ الإعدادات.');
     }
   } else {
     const db = getLocalDB();
-    db.merchant = merchant;
-    // update all existing customers stamp goal as well
-    db.customers.forEach(c => c.stampsGoal = merchant.stampsGoal);
+    let card = db.loyalty_cards.find(c => c.merchantId === currentUser.merchantId);
+    if (!card) {
+      card = { id: `card_${Date.now()}`, merchantId: currentUser.merchantId };
+      db.loyalty_cards.push(card);
+    }
+    Object.assign(card, cardData);
     saveLocalDB(db);
+    alert('✅ تم تصميم وحفظ بطاقة الولاء ديمو بنجاح!');
+    updateLivePreview(card);
   }
-
-  updateLivePreview(merchant);
-  alert('✅ تم حفظ إعدادات قالب بطاقة الولاء وتحديثها بنجاح!');
 }
 
-// 2. Customers Enrollment
+// ----------------------------------------
+// 2) Customer enrollment
+// ----------------------------------------
 async function loadCustomers() {
   let customers = [];
   if (!useFallback) {
     try {
-      const res = await fetch('/api/customers');
-      customers = await res.json();
-    } catch (e) {
-      customers = getLocalDB().customers;
-    }
+      const res = await fetch('/api/customers', {
+        headers: { 'Authorization': `Bearer ${currentToken}` }
+      });
+      if (res.ok) customers = await res.json();
+    } catch (e) {}
   } else {
-    customers = getLocalDB().customers;
+    const db = getLocalDB();
+    customers = db.customers.filter(c => c.merchantId === currentUser.merchantId);
   }
 
   const tbody = document.getElementById('customers-table-body');
@@ -208,8 +508,6 @@ async function loadCustomers() {
 
   customers.forEach(c => {
     const tr = document.createElement('tr');
-
-    // Pass links
     const passUrl = `${window.location.origin}/card.html?id=${c.id}`;
     const scanUrl = `${window.location.origin}/scanner.html?id=${c.id}`;
 
@@ -238,7 +536,10 @@ async function enrollCustomer(e) {
     try {
       const res = await fetch('/api/customers', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${currentToken}`
+        },
         body: JSON.stringify({ name, phone })
       });
       if (res.ok) {
@@ -250,24 +551,28 @@ async function enrollCustomer(e) {
         alert(`خطأ: ${err.error}`);
       }
     } catch (err) {
-      console.error(err);
+      alert('خطأ اتصال بالإنترنت.');
     }
   } else {
     const db = getLocalDB();
+    const card = db.loyalty_cards.find(c => c.merchantId === currentUser.merchantId) || DEFAULT_STATE.loyalty_cards[0];
+
     const customerId = `cust_${Date.now()}`;
-    const newCustomer = {
+    const newCust = {
       id: customerId,
+      merchantId: currentUser.merchantId,
       name,
       phone,
       stampsCollected: 0,
-      stampsGoal: db.merchant.stampsGoal || 10,
+      stampsGoal: card.stampsGoal || 10,
       lastStampedTime: null,
       rewardsClaimed: 0
     };
-    db.customers.push(newCustomer);
 
-    db.logs.unshift({
+    db.customers.push(newCust);
+    db.stamps_log.unshift({
       id: `log_${Date.now()}`,
+      merchantId: currentUser.merchantId,
       customerId,
       customerName: name,
       type: 'enroll',
@@ -278,11 +583,153 @@ async function enrollCustomer(e) {
     saveLocalDB(db);
     document.getElementById('customer-form').reset();
     loadCustomers();
-    alert('✅ تم تسجيل العميل الجديد وتوليد بطاقته بنجاح!');
+    alert('✅ تم تسجيل العميل الجديد وتوليد بطاقته ديمو بنجاح!');
   }
 }
 
-// 3. Push notifications Simulator
+// ----------------------------------------
+// 3) Staff Management (Owner only)
+// ----------------------------------------
+async function loadStaff() {
+  let staffList = [];
+  if (!useFallback) {
+    try {
+      const res = await fetch('/api/staff', {
+        headers: { 'Authorization': `Bearer ${currentToken}` }
+      });
+      if (res.ok) staffList = await res.json();
+    } catch (err) {}
+  } else {
+    const db = getLocalDB();
+    staffList = db.merchant_staff.filter(s => s.merchantId === currentUser.merchantId);
+  }
+
+  const tbody = document.getElementById('staff-table-body');
+  tbody.innerHTML = '';
+
+  staffList.forEach(s => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td style="font-weight:700;">${s.name}</td>
+      <td class="mono">${s.email}</td>
+      <td>${s.isOwner ? '<span class="badge-status enroll">المالك</span>' : '<span class="badge-status stamp">موظف فرع</span>'}</td>
+      <td>${s.canStamp ? '✅' : '❌'}</td>
+      <td>${s.canEnrollCustomer ? '✅' : '❌'}</td>
+      <td>${s.canManageSettings ? '✅' : '❌'}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+async function addStaffMember(e) {
+  e.preventDefault();
+  const name = document.getElementById('staffName').value;
+  const email = document.getElementById('staffEmail').value;
+  const password = document.getElementById('staffPassword').value;
+
+  const canStamp = document.getElementById('permStamp').checked;
+  const canEnrollCustomer = document.getElementById('permEnroll').checked;
+  const canViewReports = document.getElementById('permReports').checked;
+  const canManageSettings = document.getElementById('permSettings').checked;
+
+  const staffData = { name, email, password, canStamp, canEnrollCustomer, canViewReports, canManageSettings };
+
+  if (!useFallback) {
+    try {
+      const res = await fetch('/api/staff', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${currentToken}`
+        },
+        body: JSON.stringify(staffData)
+      });
+      if (res.ok) {
+        document.getElementById('staff-form').reset();
+        loadStaff();
+        alert('✅ تم إضافة الموظف الجديد للفريق بنجاح!');
+      } else {
+        const err = await res.json();
+        alert(`خطأ: ${err.error}`);
+      }
+    } catch (err) {
+      alert('خطأ اتصال بالشبكة.');
+    }
+  } else {
+    const db = getLocalDB();
+    const existing = db.merchant_staff.find(s => s.email.toLowerCase() === email.toLowerCase());
+    if (existing) {
+      alert('خطأ: هذا البريد الإلكتروني مسجل بالفعل لموظف آخر');
+      return;
+    }
+
+    db.merchant_staff.push({
+      id: `staff_${Date.now()}`,
+      merchantId: currentUser.merchantId,
+      name,
+      email: email.toLowerCase(),
+      isOwner: false,
+      canStamp,
+      canEnrollCustomer,
+      canViewReports,
+      canManageSettings
+    });
+
+    saveLocalDB(db);
+    document.getElementById('staff-form').reset();
+    loadStaff();
+    alert('✅ تم إضافة الموظف للفريق ديمو بنجاح!');
+  }
+}
+
+// ----------------------------------------
+// 4) Push Simulator
+// ----------------------------------------
+async function sendPushNotification(e) {
+  e.preventDefault();
+  const title = document.getElementById('pushTitle').value;
+  const body = document.getElementById('pushBody').value;
+
+  if (!useFallback) {
+    try {
+      const res = await fetch('/api/notifications', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${currentToken}`
+        },
+        body: JSON.stringify({ title, body })
+      });
+      if (res.ok) {
+        alert('🚀 تم بث إشعار الدفع الفوري بنجاح!');
+      }
+    } catch (err) {
+      alert('خطأ اتصال.');
+    }
+  } else {
+    const db = getLocalDB();
+    db.notifications_log.unshift({
+      id: `push_${Date.now()}`,
+      merchantId: currentUser.merchantId,
+      title,
+      body,
+      timestamp: new Date().toISOString()
+    });
+    db.stamps_log.unshift({
+      id: `log_${Date.now()}`,
+      merchantId: currentUser.merchantId,
+      customerId: 'all',
+      customerName: 'جميع المشتركين',
+      type: 'push',
+      timestamp: new Date().toISOString(),
+      details: `تم إرسال إشعار دفع جماعي: ${title}`
+    });
+    saveLocalDB(db);
+    alert('🚀 تم بث إشعار الدفع الفوري ديمو بنجاح!');
+  }
+}
+
+// Lockscreen real-time simulator
 function setupPushFormRealtimePreview() {
   const titleInput = document.getElementById('pushTitle');
   const bodyInput = document.getElementById('pushBody');
@@ -299,99 +746,60 @@ function setupPushFormRealtimePreview() {
   titleInput.addEventListener('input', updatePreview);
   bodyInput.addEventListener('input', updatePreview);
 
-  // Initial slide in
   setTimeout(updatePreview, 1000);
 }
 
-async function sendPushNotification(e) {
-  e.preventDefault();
-  const title = document.getElementById('pushTitle').value;
-  const body = document.getElementById('pushBody').value;
-
-  if (!useFallback) {
-    try {
-      const res = await fetch('/api/pushes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, body })
-      });
-      if (res.ok) {
-        alert('🚀 تم بث إشعار الدفع الفوري لجميع الهواتف بنجاح!');
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  } else {
-    const db = getLocalDB();
-    const newPush = {
-      id: `push_${Date.now()}`,
-      title,
-      body,
-      timestamp: new Date().toISOString()
-    };
-    db.pushes.unshift(newPush);
-    db.logs.unshift({
-      id: `log_${Date.now()}`,
-      customerId: 'all',
-      customerName: 'جميع المشتركين',
-      type: 'push',
-      timestamp: new Date().toISOString(),
-      details: `تم إرسال إشعار دفع: ${title}`
-    });
-    saveLocalDB(db);
-    alert('🚀 تم بث إشعار الدفع الفوري لجميع الهواتف بنجاح!');
-  }
-}
-
-// 4. Logs and Analytics Panel
+// ----------------------------------------
+// 5) Logs and Analytics reports
+// ----------------------------------------
 async function loadLogsAndStats() {
+  let stats = { totalCustomers: 0, totalStamps: 0, totalRewards: 0, totalPushes: 0 };
   let logs = [];
-  let customers = [];
-  let pushes = [];
 
   if (!useFallback) {
     try {
-      const resLogs = await fetch('/api/logs');
-      logs = await resLogs.json();
-      const resCusts = await fetch('/api/customers');
-      customers = await resCusts.json();
-      const resPushes = await fetch('/api/pushes');
-      pushes = await resPushes.json();
-    } catch (e) {
-      const db = getLocalDB();
-      logs = db.logs;
-      customers = db.customers;
-      pushes = db.pushes;
-    }
+      const resStats = await fetch('/api/reports/overview', {
+        headers: { 'Authorization': `Bearer ${currentToken}` }
+      });
+      if (resStats.ok) stats = await resStats.json();
+
+      const resLogs = await fetch('/api/logs', {
+        headers: { 'Authorization': `Bearer ${currentToken}` }
+      });
+      if (resLogs.ok) logs = await resLogs.json();
+    } catch (e) {}
   } else {
     const db = getLocalDB();
-    logs = db.logs;
-    customers = db.customers;
-    pushes = db.pushes;
+    const customers = db.customers.filter(c => c.merchantId === currentUser.merchantId);
+    const pushes = db.notifications_log.filter(p => p.merchantId === currentUser.merchantId);
+
+    let totalStamps = 0;
+    let totalRewards = 0;
+    customers.forEach(c => {
+      totalStamps += c.stampsCollected;
+      totalRewards += c.rewardsClaimed;
+    });
+
+    stats = {
+      totalCustomers: customers.length,
+      totalStamps,
+      totalRewards,
+      totalPushes: pushes.length
+    };
+    logs = db.stamps_log.filter(l => l.merchantId === currentUser.merchantId);
   }
 
-  // Calculate statistics
-  const totalCustomers = customers.length;
-  let totalStamps = 0;
-  let totalRewards = 0;
-  customers.forEach(c => {
-    totalStamps += c.stampsCollected;
-    totalRewards += (c.rewardsClaimed || 0);
-  });
-  const totalPushNotifications = pushes.length;
+  document.getElementById('stat-total-customers').innerText = stats.totalCustomers;
+  document.getElementById('stat-total-stamps').innerText = stats.totalStamps;
+  document.getElementById('stat-total-rewards').innerText = stats.totalRewards;
+  document.getElementById('stat-total-pushes').innerText = stats.totalPushes;
 
-  document.getElementById('stat-total-customers').innerText = totalCustomers;
-  document.getElementById('stat-total-stamps').innerText = totalStamps;
-  document.getElementById('stat-total-rewards').innerText = totalRewards;
-  document.getElementById('stat-total-pushes').innerText = totalPushNotifications;
-
-  // Render logs table
   const tbody = document.getElementById('logs-table-body');
   tbody.innerHTML = '';
 
   logs.forEach(l => {
     const tr = document.createElement('tr');
-    const timeStr = new Date(l.timestamp).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ' ' + new Date(l.timestamp).toLocaleDateString('ar-SA');
+    const timeStr = new Date(l.timestamp).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date(l.timestamp).toLocaleDateString('ar-SA');
 
     let typeClass = 'stamp';
     let typeText = 'ختم بطاقة';
@@ -409,25 +817,23 @@ async function loadLogsAndStats() {
   });
 }
 
-// Initialization on DOM Content Loaded
+// DOM Setup
 document.addEventListener('DOMContentLoaded', async () => {
-  await detectMode();
-  await loadMerchantSettings();
+  await detectModeAndSession();
   setupPushFormRealtimePreview();
 
-  // Real-time customizer inputs update preview instantly
-  const inputs = ['brandName', 'programName', 'rewardName', 'hexBackgroundColor', 'stampsGoal', 'stampEmoji'];
-  inputs.forEach(id => {
+  const previewInputs = ['brandName', 'programName', 'rewardName', 'hexBackgroundColor', 'stampsGoal', 'stampEmoji'];
+  previewInputs.forEach(id => {
     document.getElementById(id).addEventListener('input', () => {
-      const tempMerchant = {
+      const card = {
         brandName: document.getElementById('brandName').value,
         programName: document.getElementById('programName').value,
         rewardName: document.getElementById('rewardName').value,
         hexBackgroundColor: document.getElementById('hexBackgroundColor').value,
         stampsGoal: parseInt(document.getElementById('stampsGoal').value),
-        stampEmoji: document.getElementById('stampEmoji').value,
+        stampEmoji: document.getElementById('stampEmoji').value
       };
-      updateLivePreview(tempMerchant);
+      updateLivePreview(card);
     });
   });
 });

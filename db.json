@@ -1,62 +1,150 @@
 {
-  "merchant": {
-    "brandName": "محمصة السنبلة",
-    "programName": "بطاقة قهوة السنبلة",
-    "logoUrl": "https://example.com/logo.png",
-    "hexBackgroundColor": "#1E3050",
-    "stampsGoal": 10,
-    "stampEmoji": "☕",
-    "rewardName": "القهوة العاشرة مجاناً",
-    "cooldownMinutes": 1
-  },
+  "merchants": [
+    {
+      "id": "merchant_default",
+      "businessName": "محمصة السنبلة",
+      "ownerName": "عبدالله محمد",
+      "email": "owner@sonbola.com",
+      "phone": "0501234567",
+      "planId": "free",
+      "status": "trial",
+      "createdAt": "2026-08-11T12:00:00.000Z"
+    },
+    {
+      "id": "merchant_1786490609138",
+      "businessName": "محمصة الرياض",
+      "ownerName": "سلطان الحربي",
+      "email": "owner_new@sonbola.com",
+      "phone": "0599999999",
+      "planId": "free",
+      "status": "trial",
+      "createdAt": "2026-08-11T23:23:29.259Z"
+    },
+    {
+      "id": "merchant_1786490800136",
+      "businessName": "محمصة فنجان قهوة",
+      "ownerName": "عبدالعزيز الأحمد",
+      "email": "finjan@coffee.com",
+      "phone": "0599999999",
+      "planId": "free",
+      "status": "trial",
+      "createdAt": "2026-08-11T23:26:40.258Z"
+    }
+  ],
+  "merchant_staff": [
+    {
+      "id": "staff_default",
+      "merchantId": "merchant_default",
+      "name": "عبدالله محمد",
+      "email": "owner@sonbola.com",
+      "passwordHash": "$2b$10$wO08Ppx2K89p4Nbe0F.m8On7L.Z0M.Sshn4n7mC/IHeS0/OWee/zG",
+      "isOwner": true,
+      "canStamp": true,
+      "canEnrollCustomer": true,
+      "canViewReports": true,
+      "canManageSettings": true,
+      "createdAt": "2026-08-11T12:00:00.000Z"
+    },
+    {
+      "id": "staff_1786490609138",
+      "merchantId": "merchant_1786490609138",
+      "name": "سلطان الحربي",
+      "email": "owner_new@sonbola.com",
+      "passwordHash": "$2a$10$IV3DXCJC.Lo2WOZuCMRiuebc38aLJiS8uJqTBAP8A3BRJ2286dY/6",
+      "isOwner": true,
+      "canStamp": true,
+      "canEnrollCustomer": true,
+      "canViewReports": true,
+      "canManageSettings": true,
+      "createdAt": "2026-08-11T23:23:29.260Z"
+    },
+    {
+      "id": "staff_1786490800136",
+      "merchantId": "merchant_1786490800136",
+      "name": "عبدالعزيز الأحمد",
+      "email": "finjan@coffee.com",
+      "passwordHash": "$2a$10$oCJeAM96EqyZlAUnVE5VS.ewNAaFlackKTvFdY6LYmINvBqYjtqpG",
+      "isOwner": true,
+      "canStamp": true,
+      "canEnrollCustomer": true,
+      "canViewReports": true,
+      "canManageSettings": true,
+      "createdAt": "2026-08-11T23:26:40.258Z"
+    }
+  ],
+  "loyalty_cards": [
+    {
+      "id": "card_default",
+      "merchantId": "merchant_default",
+      "brandName": "محمصة السنبلة",
+      "programName": "بطاقة قهوة السنبلة",
+      "logoUrl": "https://example.com/logo.png",
+      "hexBackgroundColor": "#1E3050",
+      "stampsGoal": 10,
+      "stampEmoji": "☕",
+      "rewardName": "القهوة العاشرة مجاناً",
+      "cooldownMinutes": 1
+    },
+    {
+      "id": "card_1786490609138",
+      "merchantId": "merchant_1786490609138",
+      "brandName": "محمصة الرياض",
+      "programName": "بطاقة ولاء محمصة الرياض",
+      "logoUrl": "https://example.com/logo.png",
+      "hexBackgroundColor": "#1E3050",
+      "stampsGoal": 10,
+      "stampEmoji": "☕",
+      "rewardName": "القهوة العاشرة مجاناً",
+      "cooldownMinutes": 1
+    },
+    {
+      "id": "card_1786490800136",
+      "merchantId": "merchant_1786490800136",
+      "brandName": "محمصة فنجان قهوة",
+      "programName": "بطاقة ولاء محمصة فنجان قهوة",
+      "logoUrl": "https://example.com/logo.png",
+      "hexBackgroundColor": "#1E3050",
+      "stampsGoal": 10,
+      "stampEmoji": "☕",
+      "rewardName": "القهوة العاشرة مجاناً",
+      "cooldownMinutes": 1
+    }
+  ],
   "customers": [
     {
       "id": "cust_001",
+      "merchantId": "merchant_default",
       "name": "عبدالله محمد",
       "phone": "0501234567",
       "stampsCollected": 3,
       "stampsGoal": 10,
       "lastStampedTime": null,
-      "rewardsClaimed": 0
-    },
-    {
-      "id": "cust_1786487059526",
-      "name": "سلطان الحربي",
-      "phone": "0555555555",
-      "stampsCollected": 0,
-      "stampsGoal": 10,
-      "lastStampedTime": null,
-      "rewardsClaimed": 0
-    },
-    {
-      "id": "cust_1786487196099",
-      "name": "نواف الحربي",
-      "phone": "0599999999",
-      "stampsCollected": 0,
-      "stampsGoal": 10,
-      "lastStampedTime": null,
-      "rewardsClaimed": 0
+      "rewardsClaimed": 0,
+      "createdAt": "2026-08-11T12:00:00.000Z"
     }
   ],
-  "logs": [
+  "stamps_log": [
     {
-      "id": "log_1786487196099",
-      "customerId": "cust_1786487196099",
-      "customerName": "نواف الحربي",
+      "id": "log_1786490800258",
+      "merchantId": "merchant_1786490800136",
+      "customerId": "system",
+      "customerName": "النظام",
       "type": "enroll",
-      "timestamp": "2026-08-11T22:26:36.099Z",
-      "details": "تم تسجيل عميل جديد في البرنامج."
+      "timestamp": "2026-08-11T23:26:40.258Z",
+      "details": "تم تسجيل حساب تاجر جديد بنجاح: محمصة فنجان قهوة"
     },
     {
-      "id": "log_1786487059526",
-      "customerId": "cust_1786487059526",
-      "customerName": "سلطان الحربي",
+      "id": "log_1786490609260",
+      "merchantId": "merchant_1786490609138",
+      "customerId": "system",
+      "customerName": "النظام",
       "type": "enroll",
-      "timestamp": "2026-08-11T22:24:19.526Z",
-      "details": "تم تسجيل عميل جديد في البرنامج."
+      "timestamp": "2026-08-11T23:23:29.260Z",
+      "details": "تم تسجيل حساب تاجر جديد بنجاح: محمصة الرياض"
     },
     {
       "id": "log_001",
+      "merchantId": "merchant_default",
       "customerId": "cust_001",
       "customerName": "عبدالله محمد",
       "type": "stamp",
@@ -64,9 +152,10 @@
       "details": "تم إضافة ختم. المجموع الحالي: 3"
     }
   ],
-  "pushes": [
+  "notifications_log": [
     {
       "id": "push_001",
+      "merchantId": "merchant_default",
       "title": "عرض خاص من محمصة السنبلة ☕",
       "body": "احصل على ضعف الأختام اليوم عند طلب أي نوع من القهوة المختصة!",
       "timestamp": "2026-08-11T14:30:00.000Z"

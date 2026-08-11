@@ -1,0 +1,67 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "server.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "*.html",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "*.css",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "*.js",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "fonts/**",
+      "use": "@vercel/static"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "server.js"
+    },
+    {
+      "src": "/index.html",
+      "dest": "index.html"
+    },
+    {
+      "src": "/dashboard.html",
+      "dest": "dashboard.html"
+    },
+    {
+      "src": "/card.html",
+      "dest": "card.html"
+    },
+    {
+      "src": "/scanner.html",
+      "dest": "scanner.html"
+    },
+    {
+      "src": "/styles.css",
+      "dest": "styles.css"
+    },
+    {
+      "src": "/dashboard.js",
+      "dest": "dashboard.js"
+    },
+    {
+      "src": "/script.js",
+      "dest": "script.js"
+    },
+    {
+      "src": "/fonts/(.*)",
+      "dest": "fonts/$1"
+    },
+    {
+      "src": "/",
+      "dest": "index.html"
+    }
+  ]
+}
