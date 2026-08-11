@@ -1,0 +1,75 @@
+{
+  "merchant": {
+    "brandName": "محمصة السنبلة",
+    "programName": "بطاقة قهوة السنبلة",
+    "logoUrl": "https://example.com/logo.png",
+    "hexBackgroundColor": "#1E3050",
+    "stampsGoal": 10,
+    "stampEmoji": "☕",
+    "rewardName": "القهوة العاشرة مجاناً",
+    "cooldownMinutes": 1
+  },
+  "customers": [
+    {
+      "id": "cust_001",
+      "name": "عبدالله محمد",
+      "phone": "0501234567",
+      "stampsCollected": 3,
+      "stampsGoal": 10,
+      "lastStampedTime": null,
+      "rewardsClaimed": 0
+    },
+    {
+      "id": "cust_1786487059526",
+      "name": "سلطان الحربي",
+      "phone": "0555555555",
+      "stampsCollected": 0,
+      "stampsGoal": 10,
+      "lastStampedTime": null,
+      "rewardsClaimed": 0
+    },
+    {
+      "id": "cust_1786487196099",
+      "name": "نواف الحربي",
+      "phone": "0599999999",
+      "stampsCollected": 0,
+      "stampsGoal": 10,
+      "lastStampedTime": null,
+      "rewardsClaimed": 0
+    }
+  ],
+  "logs": [
+    {
+      "id": "log_1786487196099",
+      "customerId": "cust_1786487196099",
+      "customerName": "نواف الحربي",
+      "type": "enroll",
+      "timestamp": "2026-08-11T22:26:36.099Z",
+      "details": "تم تسجيل عميل جديد في البرنامج."
+    },
+    {
+      "id": "log_1786487059526",
+      "customerId": "cust_1786487059526",
+      "customerName": "سلطان الحربي",
+      "type": "enroll",
+      "timestamp": "2026-08-11T22:24:19.526Z",
+      "details": "تم تسجيل عميل جديد في البرنامج."
+    },
+    {
+      "id": "log_001",
+      "customerId": "cust_001",
+      "customerName": "عبدالله محمد",
+      "type": "stamp",
+      "timestamp": "2026-08-11T12:00:00.000Z",
+      "details": "تم إضافة ختم. المجموع الحالي: 3"
+    }
+  ],
+  "pushes": [
+    {
+      "id": "push_001",
+      "title": "عرض خاص من محمصة السنبلة ☕",
+      "body": "احصل على ضعف الأختام اليوم عند طلب أي نوع من القهوة المختصة!",
+      "timestamp": "2026-08-11T14:30:00.000Z"
+    }
+  ]
+}

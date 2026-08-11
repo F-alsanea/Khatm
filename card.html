@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>بطاقة الولاء الرقمية — ختم</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@500;700;800;900&family=Tajawal:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<style>
+  body {
+    background: #0f172a; /* Darker sleek background to make card stand out */
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 20px;
+  }
+  .pass-wrapper {
+    width: 100%;
+    max-width: 380px;
+    perspective: 1000px;
+  }
+  .pass-card {
+    border-radius: 24px;
+    padding: 24px;
+    box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
+    border: 1px solid rgba(255,255,255,0.1);
+    background: #1e3050; /* Fallback */
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+  }
+  .pass-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 30px 60px -15px rgba(0,0,0,0.6);
+  }
+  .pass-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1.5px dashed rgba(255,255,255,0.2);
+    padding-bottom: 16px;
+    margin-bottom: 20px;
+  }
+  .pass-brand {
+    font-family: 'Cairo', sans-serif;
+    font-weight: 900;
+    font-size: 1.2rem;
+  }
+  .pass-program {
+    font-size: 0.85rem;
+    opacity: 0.8;
+  }
+  .pass-reward {
+    font-family: 'Cairo', sans-serif;
+    font-weight: 800;
+    font-size: 1.4rem;
+    line-height: 1.3;
+    margin-bottom: 8px;
+  }
+  .pass-status-text {
+    font-size: 0.95rem;
+    opacity: 0.85;
+    margin-bottom: 24px;
+  }
+  .pass-stamps-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 24px;
+    justify-content: center;
+  }
+  .pass-stamp-dot {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    border: 2px dashed rgba(255,255,255,0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.4rem;
+    background: rgba(0,0,0,0.2);
+    transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  }
+  .pass-stamp-dot.filled {
+    border: 2px solid var(--brass);
+    background: rgba(198,150,58,0.25);
+    transform: scale(1.1);
+  }
+  .pass-qr-section {
+    background: #fff;
+    border-radius: 20px;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    color: var(--ink);
+    box-shadow: inset 0 2px 8px rgba(0,0,0,0.06);
+  }
+  .pass-qr-code {
+    width: 160px;
+    height: 160px;
+    background: #eaeaea;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #ccc;
+    margin-bottom: 12px;
+  }
+  .pass-qr-label {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--ink-soft);
+    text-align: center;
+  }
+  .congrats-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(15,23,42,0.85);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .congrats-content {
+    background: var(--parchment);
+    color: var(--ink);
+    border-radius: 24px;
+    padding: 40px 30px;
+    max-width: 400px;
+    width: 100%;
+    text-align: center;
+    box-shadow: 0 30px 60px rgba(0,0,0,0.5);
+    border: 2px solid var(--ink);
+  }
+  /* Simple confetti animations */
+  @keyframes celebrate {
+    0% { transform: scale(0.5); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  .celebrate-ani {
+    animation: celebrate 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+  }
+</style>
+</head>
+<body>
+
+<div class="pass-wrapper">
+  <div class="pass-card" id="pass-card">
+    <div class="pass-header">
+      <div class="pass-brand" id="pass-brand">جاري التحميل...</div>
+      <div class="pass-program" id="pass-program">بطاقة ولاء رقمية</div>
+    </div>
+
+    <div class="pass-reward" id="pass-reward">...</div>
+    <div class="pass-status-text" id="pass-status-text">...</div>
+
+    <div class="pass-stamps-grid" id="pass-stamps-grid">
+      <!-- Generated in JS -->
+    </div>
+
+    <div class="pass-qr-section">
+      <div class="pass-qr-code" id="pass-qr-code">
+        <!-- Canvas/Image of QR Code -->
+      </div>
+      <div class="pass-qr-label">اعرض الرمز للموظف عند الدفع لإضافة أختام</div>
+    </div>
+  </div>
+</div>
+
+<div class="congrats-modal" id="congrats-modal">
+  <div class="congrats-content celebrate-ani">
+    <div style="font-size: 4rem; margin-bottom: 20px;">🎉</div>
+    <h2 style="font-family:'Cairo'; font-weight:900; margin-bottom:14px;">تهانينا! بطاقتك ممتلئة</h2>
+    <p style="margin-bottom: 24px;" id="congrats-text">حصلت على المكافأة المجانية! أظهر الرمز للكاشير لاسترداد جائزتك.</p>
+    <button class="btn btn-primary" onclick="closeCongrats()" style="width: 100%;">ممتاز! شكراً لك</button>
+  </div>
+</div>
+
+<!-- Add standard QR code generator library to ensure offline high quality QR renders -->
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<script>
+  let customerId = '';
+  let stampsCollected = 0;
+  let stampsGoal = 10;
+  let useFallback = false;
+
+  // Extract query string parameter
+  function getQueryParam(name) {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get(name);
+  }
+
+  // Detect mode & Fetch State
+  async function loadPass() {
+    customerId = getQueryParam('id') || 'cust_001';
+
+    let db;
+    let customer;
+    let merchant;
+
+    try {
+      const resMerchant = await fetch('/api/merchant');
+      if (resMerchant.ok) {
+        merchant = await resMerchant.ok ? await resMerchant.json() : null;
+        const resCust = await fetch(`/api/customers/${customerId}`);
+        if (resCust.ok) {
+          customer = await resCust.json();
+          useFallback = false;
+        } else {
+          throw new Error();
+        }
+      } else {
+        throw new Error();
+      }
+    } catch (e) {
+      useFallback = true;
+      db = JSON.parse(localStorage.getItem('khatm_db')) || {
+        merchant: {
+          brandName: "محمصة السنبلة",
+          programName: "بطاقة قهوة السنبلة",
+          logoUrl: "https://example.com/logo.png",
+          hexBackgroundColor: "#1E3050",
+          stampsGoal: 10,
+          stampEmoji: "☕",
+          rewardName: "القهوة العاشرة مجاناً",
+          cooldownMinutes: 1
+        },
+        customers: [
+          {
+            id: "cust_001",
+            name: "عبدالله محمد",
+            phone: "0501234567",
+            stampsCollected: 3,
+            stampsGoal: 10,
+            lastStampedTime: null,
+            rewardsClaimed: 0
+          }
+        ]
+      };
+      merchant = db.merchant;
+      customer = db.customers.find(c => c.id === customerId) || db.customers[0];
+    }
+
+    if (!customer) {
+      document.body.innerHTML = `<h2>خطأ: بطاقة العميل غير صالحة أو غير مسجلة!</h2>`;
+      return;
+    }
+
+    // Apply design
+    document.getElementById('pass-brand').innerText = merchant.brandName;
+    document.getElementById('pass-program').innerText = merchant.programName;
+    document.getElementById('pass-reward').innerText = merchant.rewardName;
+    document.getElementById('pass-card').style.backgroundColor = merchant.hexBackgroundColor;
+
+    stampsCollected = customer.stampsCollected;
+    stampsGoal = customer.stampsGoal || merchant.stampsGoal || 10;
+    const emoji = merchant.stampEmoji || '☕';
+
+    // Status label
+    const remaining = stampsGoal - stampsCollected;
+    const statusTextEl = document.getElementById('pass-status-text');
+    if (remaining <= 0) {
+      statusTextEl.innerText = `مبروك! مكافأتك جاهزة للاستبدال 🎉`;
+      // Show celebration modal only if stamps count actually changed to filled
+      if (stampsCollected >= stampsGoal && sessionStorage.getItem('notified_redeem') !== customerId) {
+        document.getElementById('congrats-modal').style.display = 'flex';
+        sessionStorage.setItem('notified_redeem', customerId);
+      }
+    } else {
+      statusTextEl.innerText = `باقي ${remaining} أختام للمكافأة المجانية`;
+    }
+
+    // Stamps grid
+    const grid = document.getElementById('pass-stamps-grid');
+    grid.innerHTML = '';
+    for (let i = 1; i <= stampsGoal; i++) {
+      const dot = document.createElement('div');
+      dot.className = 'pass-stamp-dot' + (i <= stampsCollected ? ' filled' : '');
+      dot.innerText = i <= stampsCollected ? emoji : '·';
+      grid.appendChild(dot);
+    }
+
+    // Generate real QR code of scan action URL
+    const qrSection = document.getElementById('pass-qr-code');
+    qrSection.innerHTML = '';
+    const scanUrl = `${window.location.origin}/scanner.html?id=${customer.id}`;
+
+    const canvas = document.createElement('canvas');
+    qrSection.appendChild(canvas);
+    QRCode.toCanvas(canvas, scanUrl, { width: 160, margin: 1 }, function (error) {
+      if (error) console.error(error);
+    });
+  }
+
+  function closeCongrats() {
+    document.getElementById('congrats-modal').style.display = 'none';
+  }
+
+  // Auto poll pass data every 3 seconds to watch for cashier real-time updates!
+  setInterval(loadPass, 3000);
+
+  // Initial load
+  loadPass();
+</script>
+</body>
+</html>

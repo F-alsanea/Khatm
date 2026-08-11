@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>أداة مسح وختم الموظف — ختم</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@500;700;800;900&family=Tajawal:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<style>
+  body {
+    background: var(--parchment);
+    color: var(--ink);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 20px;
+  }
+  .scanner-card {
+    background: #fff;
+    border: 2px solid var(--ink);
+    border-radius: 24px;
+    padding: 34px 28px;
+    max-width: 440px;
+    width: 100%;
+    box-shadow: 0 30px 60px -15px rgba(22,35,63,0.25);
+    text-align: center;
+  }
+  .scanner-title {
+    font-family: 'Cairo', sans-serif;
+    font-weight: 900;
+    font-size: 1.6rem;
+    color: var(--ink);
+    margin-bottom: 8px;
+  }
+  .scanner-subtitle {
+    font-size: 0.95rem;
+    color: var(--ink-soft);
+    margin-bottom: 30px;
+  }
+  /* Camera scan simulator */
+  .camera-box {
+    background: #111;
+    border-radius: 16px;
+    height: 180px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    position: relative;
+    overflow: hidden;
+    border: 2.5px solid var(--ink);
+    margin-bottom: 24px;
+  }
+  .scan-laser {
+    position: absolute;
+    left: 0; right: 0;
+    height: 3px;
+    background: var(--stamp);
+    box-shadow: 0 0 10px var(--stamp);
+    animation: laserMove 2.2s ease-in-out infinite;
+  }
+  @keyframes laserMove {
+    0% { top: 10%; }
+    50% { top: 90%; }
+    100% { top: 10%; }
+  }
+  .manual-input-box {
+    margin-bottom: 26px;
+  }
+  .manual-input-box input {
+    width: 100%;
+    padding: 13px;
+    border: 1.5px solid var(--ink);
+    border-radius: 8px;
+    text-align: center;
+    font-size: 1.1rem;
+    font-weight: 700;
+    background: var(--parchment);
+  }
+  .manual-input-box input:focus {
+    outline: none;
+    background: #fff;
+    border-color: var(--brass);
+  }
+  .stamp-button-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+  }
+  /* Huge round physical-style Stamp button */
+  .stamp-btn {
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    background: var(--stamp);
+    color: var(--parchment);
+    font-family: 'Cairo', sans-serif;
+    font-weight: 900;
+    font-size: 1.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border: 5px solid var(--ink);
+    box-shadow: 0 12px 0 var(--ink);
+    transition: all 0.1s ease;
+    user-select: none;
+  }
+  .stamp-btn:active {
+    transform: translateY(10px);
+    box-shadow: 0 2px 0 var(--ink);
+  }
+  /* Ink stamp ink seal visual animation */
+  .seal-ink {
+    opacity: 0;
+    transform: scale(3);
+    color: var(--stamp);
+    font-family: 'Cairo', sans-serif;
+    font-weight: 900;
+    font-size: 1.5rem;
+    border: 4px solid var(--stamp);
+    padding: 4px 14px;
+    border-radius: 8px;
+    display: inline-block;
+    margin-top: 15px;
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  }
+  .seal-ink.stamped {
+    opacity: 1;
+    transform: scale(1) rotate(-8deg);
+  }
+  .warning-cooldown {
+    color: var(--stamp);
+    font-weight: 700;
+    font-size: 0.85rem;
+    margin-top: 10px;
+    display: none;
+  }
+</style>
+</head>
+<body>
+
+<div class="scanner-card">
+  <div class="scanner-title">بوابة ختم الموظف</div>
+  <div class="scanner-subtitle" id="scanner-subtitle">امسح كود العميل لإضافة ختم أو استبدال المكافأة</div>
+
+  <div class="camera-box" id="scanner-camera-sim">
+    <div class="scan-laser"></div>
+    <div style="font-size: 2.2rem; margin-bottom: 6px;">📷</div>
+    <div style="font-size: 0.85rem; opacity: 0.8;">تم العثور على الكاميرا. جاري المسح...</div>
+  </div>
+
+  <div class="manual-input-box">
+    <label style="display: block; font-weight: 700; margin-bottom: 8px; text-align: right; font-size: 0.9rem;">معرّف بطاقة العميل (المسح أو الإدخال اليدوي):</label>
+    <input type="text" id="customerId-input" placeholder="مثال: cust_001" oninput="handleIdChange()">
+  </div>
+
+  <div class="stamp-button-container" id="action-panel" style="display: none;">
+    <h3 id="customer-identity-label" style="font-family:'Cairo'; font-weight:900;">...</h3>
+    <p id="customer-points-label" style="font-weight: 700; color: var(--ink-soft);">...</p>
+
+    <div style="display: flex; gap: 14px; width: 100%;">
+      <div class="stamp-btn" onclick="triggerStamp()">اضغط<br>للختم</div>
+      <button class="btn" id="redeem-btn" onclick="triggerRedeem()" style="flex:1; justify-content:center; border:2px solid var(--ink); background: var(--parchment-2);">استبدال<br>الجائزة 🎁</button>
+    </div>
+
+    <div class="seal-ink" id="ink-seal">مختوم رقمياً</div>
+    <div class="warning-cooldown" id="cooldown-warning">تنبيه حماية: يرجى الانتظار!</div>
+  </div>
+</div>
+
+<a href="dashboard.html" class="btn btn-ghost" style="margin-top: 20px;">العودة للوحة التحكم ←</a>
+
+<!-- Simple click stamp audio simulator -->
+<audio id="stamp-sound" src="https://assets.mixkit.co/active_storage/sfx/2017/2017-84.wav" preload="auto"></audio>
+
+<script>
+  let useFallback = false;
+  let cooldownTimer = null;
+
+  function getQueryParam(name) {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get(name);
+  }
+
+  // Handle manual input or auto-loading parameter
+  async function init() {
+    // Check mode
+    try {
+      const res = await fetch('/api/merchant');
+      useFallback = !res.ok;
+    } catch (e) {
+      useFallback = true;
+    }
+
+    const idParam = getQueryParam('id');
+    if (idParam) {
+      document.getElementById('customerId-input').value = idParam;
+      document.getElementById('scanner-camera-sim').style.display = 'none';
+      document.getElementById('scanner-subtitle').innerText = 'تم التعرف على بطاقة العميل بنجاح!';
+      loadCustomerDetails(idParam);
+    }
+  }
+
+  function handleIdChange() {
+    const val = document.getElementById('customerId-input').value.trim();
+    if (val.length > 3) {
+      loadCustomerDetails(val);
+    } else {
+      document.getElementById('action-panel').style.display = 'none';
+    }
+  }
+
+  async function loadCustomerDetails(id) {
+    let customer = null;
+    let merchant = null;
+
+    if (!useFallback) {
+      try {
+        const resCust = await fetch(`/api/customers/${id}`);
+        if (resCust.ok) {
+          customer = await resCust.json();
+          const resMerch = await fetch('/api/merchant');
+          merchant = await resMerch.json();
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    } else {
+      const db = JSON.parse(localStorage.getItem('khatm_db'));
+      if (db) {
+        customer = db.customers.find(c => c.id === id);
+        merchant = db.merchant;
+      }
+    }
+
+    if (!customer) {
+      document.getElementById('customer-identity-label').innerText = 'العميل غير موجود!';
+      document.getElementById('customer-points-label').innerText = 'الرجاء التأكد من المعرّف.';
+      document.getElementById('action-panel').style.display = 'block';
+      document.getElementById('redeem-btn').style.display = 'none';
+      return;
+    }
+
+    document.getElementById('customer-identity-label').innerText = `العميل: ${customer.name}`;
+    document.getElementById('customer-points-label').innerText = `الأختام الحالية: ${customer.stampsCollected} / ${customer.stampsGoal}`;
+    document.getElementById('action-panel').style.display = 'block';
+
+    // Show redeem button if they collected enough stamps
+    const stampsGoal = customer.stampsGoal || merchant.stampsGoal || 10;
+    if (customer.stampsCollected >= stampsGoal) {
+      document.getElementById('redeem-btn').style.display = 'flex';
+      document.getElementById('redeem-btn').style.borderColor = 'var(--brass)';
+      document.getElementById('redeem-btn').style.backgroundColor = 'rgba(198,150,58,0.15)';
+    } else {
+      document.getElementById('redeem-btn').style.display = 'none';
+    }
+  }
+
+  // Cashier Action: Trigger Stamp
+  async function triggerStamp() {
+    const id = document.getElementById('customerId-input').value.trim();
+
+    // Play stamp sound effect
+    try {
+      document.getElementById('stamp-sound').play();
+    } catch (e) {}
+
+    // Trigger visual ink seal animation
+    const seal = document.getElementById('ink-seal');
+    seal.classList.remove('stamped');
+    void seal.offsetWidth; // trigger reflow
+    seal.classList.add('stamped');
+
+    if (!useFallback) {
+      try {
+        const res = await fetch(`/api/customers/${id}/stamp`, {
+          method: 'POST'
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setTimeout(() => {
+            loadCustomerDetails(id);
+          }, 300);
+        } else {
+          const err = await res.json();
+          showWarning(err.error);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    } else {
+      const db = JSON.parse(localStorage.getItem('khatm_db'));
+      const customer = db.customers.find(c => c.id === id);
+      const merchant = db.merchant;
+      const now = new Date();
+
+      if (customer.lastStampedTime) {
+        const lastStamped = new Date(customer.lastStampedTime);
+        const diffMs = now - lastStamped;
+        const diffMins = diffMs / (1000 * 60);
+        const cooldownMinutes = merchant.cooldownMinutes || 1;
+
+        if (diffMins < cooldownMinutes) {
+          const waitSeconds = Math.ceil((cooldownMinutes - diffMins) * 60);
+          showWarning(`حماية ضد الاحتيال: يرجى الانتظار ${waitSeconds} ثانية.`);
+          return;
+        }
+      }
+
+      customer.stampsCollected += 1;
+      customer.lastStampedTime = now.toISOString();
+
+      db.logs.unshift({
+        id: `log_${Date.now()}`,
+        customerId: customer.id,
+        customerName: customer.name,
+        type: 'stamp',
+        timestamp: now.toISOString(),
+        details: `تم إضافة ختم. المجموع الحالي: ${customer.stampsCollected}/${customer.stampsGoal}`
+      });
+
+      localStorage.setItem('khatm_db', JSON.stringify(db));
+      setTimeout(() => {
+        loadCustomerDetails(id);
+      }, 300);
+    }
+  }
+
+  // Cashier Action: Trigger Redeem Reward
+  async function triggerRedeem() {
+    const id = document.getElementById('customerId-input').value.trim();
+
+    if (!useFallback) {
+      try {
+        const res = await fetch(`/api/customers/${id}/redeem`, {
+          method: 'POST'
+        });
+        if (res.ok) {
+          alert('🎉 تم استرداد المكافأة وتصفير الأختام بنجاح للعميل!');
+          loadCustomerDetails(id);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    } else {
+      const db = JSON.parse(localStorage.getItem('khatm_db'));
+      const customer = db.customers.find(c => c.id === id);
+      const stampsGoal = customer.stampsGoal || db.merchant.stampsGoal || 10;
+
+      customer.stampsCollected -= stampsGoal;
+      customer.rewardsClaimed += 1;
+
+      db.logs.unshift({
+        id: `log_${Date.now()}`,
+        customerId: customer.id,
+        customerName: customer.name,
+        type: 'redeem',
+        timestamp: new Date().toISOString(),
+        details: `تم استبدال مكافأة بنجاح! الأختام المتبقية: ${customer.stampsCollected}`
+      });
+
+      localStorage.setItem('khatm_db', JSON.stringify(db));
+      alert('🎉 تم استرداد المكافأة وتصفير الأختام بنجاح للعميل!');
+      loadCustomerDetails(id);
+    }
+  }
+
+  function showWarning(text) {
+    const warn = document.getElementById('cooldown-warning');
+    warn.innerText = text;
+    warn.style.display = 'block';
+
+    if (cooldownTimer) clearTimeout(cooldownTimer);
+    cooldownTimer = setTimeout(() => {
+      warn.style.display = 'none';
+    }, 4000);
+  }
+
+  // Initial setup
+  init();
+</script>
+</body>
+</html>
