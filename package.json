@@ -1,0 +1,13 @@
+{
+  "name": "khatm-google-wallet-pass",
+  "version": "1.0.0",
+  "description": "توليد بطاقات ولاء رقمية على Google Wallet - مشروع ختم",
+  "main": "generate-pass.js",
+  "scripts": {
+    "start": "node generate-pass.js"
+  },
+  "dependencies": {
+    "google-auth-library": "^9.14.1",
+    "jsonwebtoken": "^9.0.2"
+  }
+}
