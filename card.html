@@ -135,7 +135,6 @@
     box-shadow: 0 30px 60px rgba(0,0,0,0.5);
     border: 2px solid var(--ink);
   }
-  /* Simple confetti animations */
   @keyframes celebrate {
     0% { transform: scale(0.5); opacity: 0; }
     100% { transform: scale(1); opacity: 1; }
@@ -179,7 +178,6 @@
   </div>
 </div>
 
-<!-- Add standard QR code generator library to ensure offline high quality QR renders -->
 <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 <script>
   let customerId = '';
@@ -187,93 +185,64 @@
   let stampsGoal = 10;
   let useFallback = false;
 
-  // Extract query string parameter
   function getQueryParam(name) {
     const urlParams = new URLSearchParams(window.location.search);
     return urlParams.get(name);
   }
 
-  // Detect mode & Fetch State
   async function loadPass() {
     customerId = getQueryParam('id') || 'cust_001';
 
-    let db;
-    let customer;
-    let merchant;
+    let customer = null;
+    let card = null;
 
     try {
-      const resMerchant = await fetch('/api/merchant');
-      if (resMerchant.ok) {
-        merchant = await resMerchant.ok ? await resMerchant.json() : null;
-        const resCust = await fetch(`/api/customers/${customerId}`);
-        if (resCust.ok) {
-          customer = await resCust.json();
-          useFallback = false;
-        } else {
-          throw new Error();
-        }
+      const res = await fetch(`/api/public/cards/${customerId}`);
+      if (res.ok) {
+        const data = await res.json();
+        customer = data.customer;
+        card = data.card;
+        useFallback = false;
       } else {
         throw new Error();
       }
     } catch (e) {
       useFallback = true;
-      db = JSON.parse(localStorage.getItem('khatm_db')) || {
-        merchant: {
-          brandName: "محمصة السنبلة",
-          programName: "بطاقة قهوة السنبلة",
-          logoUrl: "https://example.com/logo.png",
-          hexBackgroundColor: "#1E3050",
-          stampsGoal: 10,
-          stampEmoji: "☕",
-          rewardName: "القهوة العاشرة مجاناً",
-          cooldownMinutes: 1
-        },
-        customers: [
-          {
-            id: "cust_001",
-            name: "عبدالله محمد",
-            phone: "0501234567",
-            stampsCollected: 3,
-            stampsGoal: 10,
-            lastStampedTime: null,
-            rewardsClaimed: 0
-          }
-        ]
-      };
-      merchant = db.merchant;
-      customer = db.customers.find(c => c.id === customerId) || db.customers[0];
+      const db = JSON.parse(localStorage.getItem('khatm_db_v2'));
+      if (db) {
+        customer = db.customers.find(c => c.id === customerId);
+        if (customer) {
+          card = db.loyalty_cards.find(cd => cd.merchantId === customer.merchantId);
+        }
+      }
     }
 
-    if (!customer) {
+    if (!customer || !card) {
       document.body.innerHTML = `<h2>خطأ: بطاقة العميل غير صالحة أو غير مسجلة!</h2>`;
       return;
     }
 
-    // Apply design
-    document.getElementById('pass-brand').innerText = merchant.brandName;
-    document.getElementById('pass-program').innerText = merchant.programName;
-    document.getElementById('pass-reward').innerText = merchant.rewardName;
-    document.getElementById('pass-card').style.backgroundColor = merchant.hexBackgroundColor;
+    document.getElementById('pass-brand').innerText = card.brandName;
+    document.getElementById('pass-program').innerText = card.programName;
+    document.getElementById('pass-reward').innerText = card.rewardName;
+    document.getElementById('pass-card').style.backgroundColor = card.hexBackgroundColor;
 
     stampsCollected = customer.stampsCollected;
-    stampsGoal = customer.stampsGoal || merchant.stampsGoal || 10;
-    const emoji = merchant.stampEmoji || '☕';
+    stampsGoal = customer.stampsGoal || card.stampsGoal || 10;
+    const emoji = card.stampEmoji || '☕';
 
-    // Status label
     const remaining = stampsGoal - stampsCollected;
     const statusTextEl = document.getElementById('pass-status-text');
     if (remaining <= 0) {
       statusTextEl.innerText = `مبروك! مكافأتك جاهزة للاستبدال 🎉`;
-      // Show celebration modal only if stamps count actually changed to filled
-      if (stampsCollected >= stampsGoal && sessionStorage.getItem('notified_redeem') !== customerId) {
+      if (stampsCollected >= stampsGoal && sessionStorage.getItem('notified_redeem_v2') !== customerId) {
         document.getElementById('congrats-modal').style.display = 'flex';
-        sessionStorage.setItem('notified_redeem', customerId);
+        sessionStorage.setItem('notified_redeem_v2', customerId);
       }
     } else {
       statusTextEl.innerText = `باقي ${remaining} أختام للمكافأة المجانية`;
     }
 
-    // Stamps grid
     const grid = document.getElementById('pass-stamps-grid');
     grid.innerHTML = '';
     for (let i = 1; i <= stampsGoal; i++) {
@@ -283,7 +252,6 @@
       grid.appendChild(dot);
     }
 
-    // Generate real QR code of scan action URL
     const qrSection = document.getElementById('pass-qr-code');
     qrSection.innerHTML = '';
     const scanUrl = `${window.location.origin}/scanner.html?id=${customer.id}`;
@@ -299,10 +267,7 @@
     document.getElementById('congrats-modal').style.display = 'none';
   }
 
-  // Auto poll pass data every 3 seconds to watch for cashier real-time updates!
   setInterval(loadPass, 3000);
-
-  // Initial load
   loadPass();
 </script>
 </body>

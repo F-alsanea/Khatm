@@ -40,7 +40,6 @@
     color: var(--ink-soft);
     margin-bottom: 30px;
   }
-  /* Camera scan simulator */
   .camera-box {
     background: #111;
     border-radius: 16px;
@@ -92,7 +91,6 @@
     align-items: center;
     gap: 16px;
   }
-  /* Huge round physical-style Stamp button */
   .stamp-btn {
     width: 120px;
     height: 120px;
@@ -115,7 +113,6 @@
     transform: translateY(10px);
     box-shadow: 0 2px 0 var(--ink);
   }
-  /* Ink stamp ink seal visual animation */
   .seal-ink {
     opacity: 0;
     transform: scale(3);
@@ -141,11 +138,40 @@
     margin-top: 10px;
     display: none;
   }
+  /* Login Panel inside scanner */
+  .scanner-login-overlay {
+    position: absolute;
+    inset: 0;
+    background: #fff;
+    border-radius: 24px;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 24px;
+  }
 </style>
 </head>
 <body>
 
-<div class="scanner-card">
+<div class="scanner-card" style="position: relative; overflow: hidden;">
+  <!-- Scanner Authentication Overlay -->
+  <div class="scanner-login-overlay" id="scanner-auth" style="display: none;">
+    <h3 style="font-family:'Cairo'; font-weight:900; margin-bottom: 14px;">تسجيل دخول الموظف 🔐</h3>
+    <p style="font-size: 0.85rem; color: var(--ink-soft); margin-bottom: 20px;">الرجاء استخدام البريد وكلمة المرور المحددة لك من قبل التاجر.</p>
+    <form onsubmit="handleScannerLogin(event)">
+      <div class="form-group" style="text-align: right;">
+        <label for="sc-email">البريد الإلكتروني</label>
+        <input type="email" id="sc-email" placeholder="staff@business.com" required>
+      </div>
+      <div class="form-group" style="text-align: right;">
+        <label for="sc-password">كلمة المرور</label>
+        <input type="password" id="sc-password" placeholder="••••••••" required>
+      </div>
+      <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center;">دخول وتفعيل الماكينة</button>
+    </form>
+  </div>
+
   <div class="scanner-title">بوابة ختم الموظف</div>
   <div class="scanner-subtitle" id="scanner-subtitle">امسح كود العميل لإضافة ختم أو استبدال المكافأة</div>
 
@@ -165,7 +191,7 @@
     <p id="customer-points-label" style="font-weight: 700; color: var(--ink-soft);">...</p>
 
     <div style="display: flex; gap: 14px; width: 100%;">
-      <div class="stamp-btn" onclick="triggerStamp()">اضغط<br>للختم</div>
+      <div class="stamp-btn" id="stamp-trigger-btn" onclick="triggerStamp()">اضغط<br>للختم</div>
       <button class="btn" id="redeem-btn" onclick="triggerRedeem()" style="flex:1; justify-content:center; border:2px solid var(--ink); background: var(--parchment-2);">استبدال<br>الجائزة 🎁</button>
     </div>
 
@@ -174,13 +200,17 @@
   </div>
 </div>
 
-<a href="dashboard.html" class="btn btn-ghost" style="margin-top: 20px;">العودة للوحة التحكم ←</a>
+<div style="display: flex; gap: 20px; margin-top: 20px;">
+  <a href="dashboard.html" class="btn btn-ghost">العودة للوحة التحكم ←</a>
+  <button class="btn btn-ghost" id="scanner-logout" onclick="handleScannerLogout()" style="display: none;">خروج الموظف 🔓</button>
+</div>
 
-<!-- Simple click stamp audio simulator -->
 <audio id="stamp-sound" src="https://assets.mixkit.co/active_storage/sfx/2017/2017-84.wav" preload="auto"></audio>
 
 <script>
   let useFallback = false;
+  let currentToken = localStorage.getItem('khatm_token') || '';
+  let currentUser = null;
   let cooldownTimer = null;
 
   function getQueryParam(name) {
@@ -188,14 +218,56 @@
     return urlParams.get(name);
   }
 
-  // Handle manual input or auto-loading parameter
   async function init() {
-    // Check mode
     try {
-      const res = await fetch('/api/merchant');
+      const res = await fetch('/api/public/cards/cust_001');
       useFallback = !res.ok;
     } catch (e) {
       useFallback = true;
+    }
+
+    if (currentToken) {
+      if (!useFallback) {
+        try {
+          const res = await fetch('/api/me', {
+            headers: { 'Authorization': `Bearer ${currentToken}` }
+          });
+          if (res.ok) {
+            currentUser = await res.json();
+            setupStaffView();
+          } else {
+            promptAuth();
+          }
+        } catch (e) {
+          promptAuth();
+        }
+      } else {
+        const session = JSON.parse(localStorage.getItem('khatm_session_v2'));
+        if (session) {
+          currentUser = session;
+          setupStaffView();
+        } else {
+          promptAuth();
+        }
+      }
+    } else {
+      promptAuth();
+    }
+  }
+
+  function promptAuth() {
+    document.getElementById('scanner-auth').style.display = 'flex';
+    document.getElementById('scanner-logout').style.display = 'none';
+  }
+
+  function setupStaffView() {
+    document.getElementById('scanner-auth').style.display = 'none';
+    document.getElementById('scanner-logout').style.display = 'inline-flex';
+
+    if (!currentUser.permissions.canStamp) {
+      alert('خطأ: حسابك لا يملك صلاحية ختم بطاقات العملاء.');
+      document.getElementById('stamp-trigger-btn').style.opacity = '0.5';
+      document.getElementById('stamp-trigger-btn').style.pointerEvents = 'none';
     }
 
     const idParam = getQueryParam('id');
@@ -205,6 +277,71 @@
       document.getElementById('scanner-subtitle').innerText = 'تم التعرف على بطاقة العميل بنجاح!';
       loadCustomerDetails(idParam);
     }
+  }
+
+  async function handleScannerLogin(e) {
+    e.preventDefault();
+    const email = document.getElementById('sc-email').value;
+    const password = document.getElementById('sc-password').value;
+
+    if (!useFallback) {
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          currentToken = data.token;
+          localStorage.setItem('khatm_token', currentToken);
+          const meRes = await fetch('/api/me', {
+            headers: { 'Authorization': `Bearer ${currentToken}` }
+          });
+          currentUser = await meRes.json();
+          setupStaffView();
+        } else {
+          alert(`خطأ: ${data.error}`);
+        }
+      } catch (err) {
+        alert('فشل الاتصال.');
+      }
+    } else {
+      // Local fallback auth
+      const db = JSON.parse(localStorage.getItem('khatm_db_v2'));
+      const staff = db.merchant_staff.find(s => s.email.toLowerCase() === email.toLowerCase());
+      if (!staff) {
+        alert('خطأ: البريد أو الباسورد غير صحيح');
+        return;
+      }
+      const merchant = db.merchants.find(m => m.id === staff.merchantId);
+      currentUser = {
+        id: staff.id,
+        merchantId: staff.merchantId,
+        name: staff.name,
+        email: staff.email,
+        businessName: merchant ? merchant.businessName : 'متجر',
+        permissions: {
+          isOwner: staff.isOwner || false,
+          canStamp: staff.canStamp || false,
+          canEnrollCustomer: staff.canEnrollCustomer || false,
+          canViewReports: staff.canViewReports || false,
+          canManageSettings: staff.canManageSettings || false
+        }
+      };
+      localStorage.setItem('khatm_session_v2', JSON.stringify(currentUser));
+      localStorage.setItem('khatm_token', `offline_token_${staff.id}`);
+      currentToken = `offline_token_${staff.id}`;
+      setupStaffView();
+    }
+  }
+
+  function handleScannerLogout() {
+    localStorage.removeItem('khatm_token');
+    localStorage.removeItem('khatm_session_v2');
+    currentToken = '';
+    currentUser = null;
+    promptAuth();
   }
 
   function handleIdChange() {
@@ -218,30 +355,41 @@
 
   async function loadCustomerDetails(id) {
     let customer = null;
-    let merchant = null;
+    let card = null;
 
     if (!useFallback) {
       try {
-        const resCust = await fetch(`/api/customers/${id}`);
-        if (resCust.ok) {
-          customer = await resCust.json();
-          const resMerch = await fetch('/api/merchant');
-          merchant = await resMerch.json();
+        const res = await fetch(`/api/public/cards/${id}`);
+        if (res.ok) {
+          const data = await res.json();
+          customer = data.customer;
+          card = data.card;
         }
       } catch (err) {
         console.error(err);
       }
     } else {
-      const db = JSON.parse(localStorage.getItem('khatm_db'));
+      const db = JSON.parse(localStorage.getItem('khatm_db_v2'));
       if (db) {
         customer = db.customers.find(c => c.id === id);
-        merchant = db.merchant;
+        if (customer) {
+          card = db.loyalty_cards.find(cd => cd.merchantId === customer.merchantId);
+        }
       }
     }
 
-    if (!customer) {
+    if (!customer || !card) {
       document.getElementById('customer-identity-label').innerText = 'العميل غير موجود!';
-      document.getElementById('customer-points-label').innerText = 'الرجاء التأكد من المعرّف.';
+      document.getElementById('customer-points-label').innerText = 'الرجاء التأكد من المعرّف وأن العميل يتبع لنفس منشأتك.';
+      document.getElementById('action-panel').style.display = 'block';
+      document.getElementById('redeem-btn').style.display = 'none';
+      return;
+    }
+
+    // Isolate data check
+    if (customer.merchantId !== currentUser.merchantId) {
+      document.getElementById('customer-identity-label').innerText = 'خطأ أمني: عزل البيانات مفعّل!';
+      document.getElementById('customer-points-label').innerText = 'لا ينتمي هذا العميل إلى منشأتك التجارية.';
       document.getElementById('action-panel').style.display = 'block';
       document.getElementById('redeem-btn').style.display = 'none';
       return;
@@ -251,8 +399,7 @@
     document.getElementById('customer-points-label').innerText = `الأختام الحالية: ${customer.stampsCollected} / ${customer.stampsGoal}`;
     document.getElementById('action-panel').style.display = 'block';
 
-    // Show redeem button if they collected enough stamps
-    const stampsGoal = customer.stampsGoal || merchant.stampsGoal || 10;
+    const stampsGoal = customer.stampsGoal || card.stampsGoal || 10;
     if (customer.stampsCollected >= stampsGoal) {
       document.getElementById('redeem-btn').style.display = 'flex';
       document.getElementById('redeem-btn').style.borderColor = 'var(--brass)';
@@ -262,31 +409,30 @@
     }
   }
 
-  // Cashier Action: Trigger Stamp
   async function triggerStamp() {
     const id = document.getElementById('customerId-input').value.trim();
 
-    // Play stamp sound effect
     try {
       document.getElementById('stamp-sound').play();
     } catch (e) {}
 
-    // Trigger visual ink seal animation
     const seal = document.getElementById('ink-seal');
     seal.classList.remove('stamped');
-    void seal.offsetWidth; // trigger reflow
+    void seal.offsetWidth;
     seal.classList.add('stamped');
 
     if (!useFallback) {
       try {
-        const res = await fetch(`/api/customers/${id}/stamp`, {
-          method: 'POST'
+        const res = await fetch('/api/stamps', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${currentToken}`
+          },
+          body: JSON.stringify({ customerId: id })
         });
         if (res.ok) {
-          const data = await res.json();
-          setTimeout(() => {
-            loadCustomerDetails(id);
-          }, 300);
+          setTimeout(() => { loadCustomerDetails(id); }, 300);
         } else {
           const err = await res.json();
           showWarning(err.error);
@@ -295,16 +441,23 @@
         console.error(err);
       }
     } else {
-      const db = JSON.parse(localStorage.getItem('khatm_db'));
+      // Fallback local db stamping logic with isolation
+      const db = JSON.parse(localStorage.getItem('khatm_db_v2'));
       const customer = db.customers.find(c => c.id === id);
-      const merchant = db.merchant;
+
+      if (!customer || customer.merchantId !== currentUser.merchantId) {
+        showWarning('خطأ: لا يمكن العثور على العميل أو غير مصرح لك');
+        return;
+      }
+
+      const card = db.loyalty_cards.find(cd => cd.merchantId === currentUser.merchantId);
       const now = new Date();
 
       if (customer.lastStampedTime) {
         const lastStamped = new Date(customer.lastStampedTime);
         const diffMs = now - lastStamped;
         const diffMins = diffMs / (1000 * 60);
-        const cooldownMinutes = merchant.cooldownMinutes || 1;
+        const cooldownMinutes = card ? card.cooldownMinutes : 1;
 
         if (diffMins < cooldownMinutes) {
           const waitSeconds = Math.ceil((cooldownMinutes - diffMins) * 60);
@@ -316,30 +469,29 @@
       customer.stampsCollected += 1;
       customer.lastStampedTime = now.toISOString();
 
-      db.logs.unshift({
+      db.stamps_log.unshift({
         id: `log_${Date.now()}`,
+        merchantId: currentUser.merchantId,
         customerId: customer.id,
         customerName: customer.name,
         type: 'stamp',
         timestamp: now.toISOString(),
-        details: `تم إضافة ختم. المجموع الحالي: ${customer.stampsCollected}/${customer.stampsGoal}`
+        details: `تم إضافة ختم. المجموع الحالي: ${customer.stampsCollected} / ${customer.stampsGoal}`
       });
 
-      localStorage.setItem('khatm_db', JSON.stringify(db));
-      setTimeout(() => {
-        loadCustomerDetails(id);
-      }, 300);
+      localStorage.setItem('khatm_db_v2', JSON.stringify(db));
+      setTimeout(() => { loadCustomerDetails(id); }, 300);
     }
   }
 
-  // Cashier Action: Trigger Redeem Reward
   async function triggerRedeem() {
     const id = document.getElementById('customerId-input').value.trim();
 
     if (!useFallback) {
       try {
         const res = await fetch(`/api/customers/${id}/redeem`, {
-          method: 'POST'
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${currentToken}` }
         });
         if (res.ok) {
           alert('🎉 تم استرداد المكافأة وتصفير الأختام بنجاح للعميل!');
@@ -349,15 +501,21 @@
         console.error(err);
       }
     } else {
-      const db = JSON.parse(localStorage.getItem('khatm_db'));
+      const db = JSON.parse(localStorage.getItem('khatm_db_v2'));
       const customer = db.customers.find(c => c.id === id);
-      const stampsGoal = customer.stampsGoal || db.merchant.stampsGoal || 10;
 
+      if (!customer || customer.merchantId !== currentUser.merchantId) {
+        alert('غير مصرح لك بإتمام هذا الإجراء.');
+        return;
+      }
+
+      const stampsGoal = customer.stampsGoal || 10;
       customer.stampsCollected -= stampsGoal;
       customer.rewardsClaimed += 1;
 
-      db.logs.unshift({
+      db.stamps_log.unshift({
         id: `log_${Date.now()}`,
+        merchantId: currentUser.merchantId,
         customerId: customer.id,
         customerName: customer.name,
         type: 'redeem',
@@ -365,7 +523,7 @@
         details: `تم استبدال مكافأة بنجاح! الأختام المتبقية: ${customer.stampsCollected}`
       });
 
-      localStorage.setItem('khatm_db', JSON.stringify(db));
+      localStorage.setItem('khatm_db_v2', JSON.stringify(db));
       alert('🎉 تم استرداد المكافأة وتصفير الأختام بنجاح للعميل!');
       loadCustomerDetails(id);
     }
@@ -382,7 +540,6 @@
     }, 4000);
   }
 
-  // Initial setup
   init();
 </script>
 </body>
