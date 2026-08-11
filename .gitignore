@@ -1,0 +1,12 @@
+# Node
+node_modules/
+npm-debug.log
+.env
+
+# Keys & local secrets
+service-account-key.json
+*.key
+*.pem
+
+# macOS
+.DS_Store
