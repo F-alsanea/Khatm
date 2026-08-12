@@ -7,6 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@500;700;800;900&family=Tajawal:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1E3050">
 <style>
   /* Dashboard specific styles on top of premium styles */
   .dash-layout {
@@ -318,6 +320,7 @@
   <div class="dash-layout">
     <aside class="sidebar">
       <button class="sidebar-btn active" id="btn-customizer" onclick="switchSection('customizer')">🎨 تصميم البطاقة</button>
+      <button class="sidebar-btn" id="btn-branches" onclick="switchSection('branches')">🏢 إدارة الفروع</button>
       <button class="sidebar-btn" id="btn-customers" onclick="switchSection('customers')">👥 إدارة المشتركين</button>
       <button class="sidebar-btn" id="btn-staff" onclick="switchSection('staff')">👮 إدارة الموظفين</button>
       <button class="sidebar-btn" id="btn-push" onclick="switchSection('push')">🔔 إرسال الإشعارات</button>
@@ -325,6 +328,42 @@
     </aside>
 
     <div class="main-content">
+      <!-- BRANCHES SECTION -->
+      <section id="section-branches" class="dash-section" style="display: none;">
+        <div class="dash-card">
+          <h3>إضافة فرع جديد</h3>
+          <p style="color: var(--ink-soft); margin-bottom: 20px;">أضف فروعك ليتمكن الموظفون من تسجيل الدخول عليها ولتمكين العملاء من التسجيل الذاتي ومسح الـ QR.</p>
+          <form id="branch-form" onsubmit="addBranch(event)" style="display: grid; grid-template-columns: 1fr 1.2fr auto; gap: 20px; align-items: end; margin-bottom: 30px;">
+            <div class="form-group" style="margin-bottom:0;">
+              <label for="branchNameInput">اسم الفرع</label>
+              <input type="text" id="branchNameInput" placeholder="مثال: فرع العليا" required>
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label for="branchAddressInput">عنوان الفرع</label>
+              <input type="text" id="branchAddressInput" placeholder="مثال: طريق الملك فهد، الرياض">
+            </div>
+            <button type="submit" class="btn btn-primary">إضافة الفرع 🏢</button>
+          </form>
+
+          <h3>الفروع الحالية ورموز التسجيل الذاتي</h3>
+          <div class="table-responsive">
+            <table>
+              <thead>
+                <tr>
+                  <th>اسم الفرع</th>
+                  <th>العنوان</th>
+                  <th>كود التسجيل الذاتي (Branch QR)</th>
+                  <th>بوابة العميل للتسجيل الذاتي</th>
+                </tr>
+              </thead>
+              <tbody id="branches-table-body">
+                <!-- JS populated -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
       <!-- CUSTOMIZER SECTION -->
       <section id="section-customizer" class="dash-section">
         <div class="dash-card">
@@ -458,9 +497,17 @@
               </div>
             </div>
             <div style="display:grid; grid-template-columns: 1fr 1.2fr; gap: 20px; align-items: center;">
-              <div class="form-group">
-                <label for="staffPassword">كلمة المرور المؤقتة</label>
-                <input type="password" id="staffPassword" placeholder="••••••••" required>
+              <div class="form-group" style="display:grid; grid-template-columns: 1fr 1fr; gap:14px;">
+                <div>
+                  <label for="staffPassword">كلمة المرور المؤقتة</label>
+                  <input type="password" id="staffPassword" placeholder="••••••••" required>
+                </div>
+                <div>
+                  <label for="staffBranchSelect">الفرع المخصص</label>
+                  <select id="staffBranchSelect">
+                    <option value="">كل الفروع (عام)</option>
+                  </select>
+                </div>
               </div>
               <div class="form-group">
                 <label>الصلاحيات المتاحة:</label>
@@ -593,5 +640,14 @@
 </footer>
 
 <script src="dashboard.js"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js')
+        .then(reg => console.log('Service Worker Registered Successfully', reg.scope))
+        .catch(err => console.log('Service Worker Registration Failed', err));
+    });
+  }
+</script>
 </body>
 </html>

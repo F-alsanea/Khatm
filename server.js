@@ -22,7 +22,9 @@ function readDB() {
   try {
     if (!fs.existsSync(DB_PATH)) {
       return {
+        plans: [],
         merchants: [],
+        branches: [],
         merchant_staff: [],
         loyalty_cards: [],
         customers: [],
@@ -31,11 +33,18 @@ function readDB() {
       };
     }
     const data = fs.readFileSync(DB_PATH, 'utf8');
-    return JSON.parse(data);
+    const db = JSON.parse(data);
+
+    // Ensure essential tables exist
+    if (!db.plans) db.plans = [];
+    if (!db.branches) db.branches = [];
+    return db;
   } catch (err) {
     console.error('Error reading db:', err);
     return {
+      plans: [],
       merchants: [],
+      branches: [],
       merchant_staff: [],
       loyalty_cards: [],
       customers: [],
@@ -85,43 +94,136 @@ function requirePermission(permission) {
 }
 
 // ----------------------------------------
+// Simulated PostgreSQL Functions
+// ----------------------------------------
+function canAddCustomer(merchantId, db) {
+  const merchant = db.merchants.find(m => m.id === merchantId);
+  if (!merchant) return false;
+
+  const planId = merchant.planId || 'free';
+  const planLimits = {
+    'free': { max_customers: 100 },
+    'growth': { max_customers: -1 }, // -1 means unlimited
+    'premium': { max_customers: -1 }
+  };
+
+  const limit = planLimits[planId] ? planLimits[planId].max_customers : 100;
+  if (limit === -1) return true;
+
+  const count = db.customers.filter(c => c.merchantId === merchantId).length;
+  return count < limit;
+}
+
+function addStampSimulated(customerId, staffId, branchId, db) {
+  const customer = db.customers.find(c => c.id === customerId);
+  if (!customer) return { success: false, error: 'العميل غير موجود' };
+
+  const staff = db.merchant_staff.find(s => s.id === staffId);
+  if (!staff) return { success: false, error: 'الموظف غير موجود' };
+
+  if (customer.merchantId !== staff.merchantId) {
+    return { success: false, error: 'العميل لا ينتمي إلى منشأة الموظف' };
+  }
+
+  const card = db.loyalty_cards.find(c => c.merchantId === customer.merchantId);
+  const stampsGoal = card ? card.stampsGoal : 10;
+  const cooldownMinutes = card ? card.cooldownMinutes : 1;
+  const now = new Date();
+
+  if (customer.lastStampedTime) {
+    const lastStamped = new Date(customer.lastStampedTime);
+    const diffMs = now - lastStamped;
+    const diffMins = diffMs / (1000 * 60);
+
+    if (diffMins < cooldownMinutes) {
+      const waitSeconds = Math.ceil((cooldownMinutes - diffMins) * 60);
+      return {
+        success: false,
+        error: `حماية ضد الاحتيال مفعّلة: يرجى الانتظار ${waitSeconds} ثانية قبل ختم العميل مجدداً`,
+        seconds_remaining: waitSeconds
+      };
+    }
+  }
+
+  customer.stampsCollected += 1;
+  customer.lastStampedTime = now.toISOString();
+
+  let isReward = false;
+  if (customer.stampsCollected >= stampsGoal) {
+    isReward = true;
+  }
+
+  db.stamps_log.unshift({
+    id: `log_${Date.now()}`,
+    merchantId: customer.merchantId,
+    customerId: customer.id,
+    staffId: staff.id,
+    branchId: branchId || null,
+    customerName: customer.name,
+    type: 'stamp',
+    timestamp: now.toISOString(),
+    details: `تم إضافة ختم بنجاح. المجموع الحالي: ${customer.stampsCollected} / ${stampsGoal}`
+  });
+
+  return {
+    success: true,
+    stamps_collected: customer.stampsCollected,
+    stamps_goal: stampsGoal,
+    is_reward: isReward,
+    customer_name: customer.name
+  };
+}
+
+// ----------------------------------------
 // Auth endpoints: Register & Login
 // ----------------------------------------
 
-// 1) Register Merchant & Default Owner/Staff & loyalty template
+// SignUp with default auto provisioning
 app.post('/api/auth/register', async (req, res) => {
   const db = readDB();
-  const { businessName, ownerName, email, phone, password } = req.body;
+  const { businessName, ownerName, email, phone, password, planId } = req.body;
 
   if (!businessName || !ownerName || !email || !phone || !password) {
     return res.status(400).json({ error: 'الرجاء إدخال كافة البيانات المطلوبة' });
   }
 
-  // Check if email already registered
   const existingStaff = db.merchant_staff.find(s => s.email.toLowerCase() === email.toLowerCase());
   if (existingStaff) {
     return res.status(400).json({ error: 'هذا البريد الإلكتروني مسجل بالفعل لمستخدم آخر' });
   }
 
   const merchantId = `merchant_${Date.now()}`;
+  const branchId = `branch_${Date.now()}`;
   const staffId = `staff_${Date.now()}`;
   const cardId = `card_${Date.now()}`;
   const passwordHash = await bcrypt.hash(password, 10);
 
-  // Create Merchant record
+  // 1. Create Merchant
+  const selectedPlan = planId || 'free';
   const newMerchant = {
     id: merchantId,
     businessName,
     ownerName,
     email,
     phone,
-    planId: 'free',
+    planId: selectedPlan,
     status: 'trial',
     createdAt: new Date().toISOString()
   };
   db.merchants.push(newMerchant);
 
-  // Create Default Owner Staff record
+  // 2. Create Default "Main Branch"
+  const newBranch = {
+    id: branchId,
+    merchantId,
+    name: 'الفرع الرئيسي',
+    address: 'الرياض، المملكة العربية السعودية',
+    qr_code_value: `qr_${merchantId}_main`,
+    createdAt: new Date().toISOString()
+  };
+  db.branches.push(newBranch);
+
+  // 3. Create Default Owner Staff
   const permissions = {
     isOwner: true,
     canStamp: true,
@@ -132,6 +234,7 @@ app.post('/api/auth/register', async (req, res) => {
   const newStaff = {
     id: staffId,
     merchantId,
+    branchId,
     name: ownerName,
     email: email.toLowerCase(),
     passwordHash,
@@ -140,7 +243,7 @@ app.post('/api/auth/register', async (req, res) => {
   };
   db.merchant_staff.push(newStaff);
 
-  // Create Default Loyalty Card template for this merchant
+  // 4. Create Default Loyalty Card
   const newCard = {
     id: cardId,
     merchantId,
@@ -151,11 +254,12 @@ app.post('/api/auth/register', async (req, res) => {
     stampsGoal: 10,
     stampEmoji: '☕',
     rewardName: 'القهوة العاشرة مجاناً',
-    cooldownMinutes: 1
+    cooldownMinutes: 1,
+    createdAt: new Date().toISOString()
   };
   db.loyalty_cards.push(newCard);
 
-  // Log action
+  // Log onboarding
   db.stamps_log.unshift({
     id: `log_${Date.now()}`,
     merchantId,
@@ -163,12 +267,11 @@ app.post('/api/auth/register', async (req, res) => {
     customerName: 'النظام',
     type: 'enroll',
     timestamp: new Date().toISOString(),
-    details: `تم تسجيل حساب تاجر جديد بنجاح: ${businessName}`
+    details: `تم تهيئة المتجر والفرع الرئيسي وبطاقة الولاء بنجاح: ${businessName}`
   });
 
   writeDB(db);
 
-  // Generate JWT token
   const token = jwt.sign(
     { merchantId, staffId, permissions },
     JWT_SECRET,
@@ -178,7 +281,11 @@ app.post('/api/auth/register', async (req, res) => {
   res.json({ success: true, token, permissions, user: { name: ownerName, email } });
 });
 
-// 2) Login Staff/Owner
+// Alias signup route
+app.post('/api/auth/signup', async (req, res) => {
+  return app._router.handle(req, res); // delegates to /api/auth/register internally
+});
+
 app.post('/api/auth/login', async (req, res) => {
   const db = readDB();
   const { email, password } = req.body;
@@ -214,7 +321,6 @@ app.post('/api/auth/login', async (req, res) => {
   res.json({ success: true, token, permissions, user: { name: staff.name, email: staff.email } });
 });
 
-// 3) Get current authenticated user
 app.get('/api/me', requireAuth, (req, res) => {
   const db = readDB();
   const staff = db.merchant_staff.find(s => s.id === req.staffId);
@@ -241,22 +347,6 @@ app.get('/api/loyalty-cards', requireAuth, (req, res) => {
     return res.status(404).json({ error: 'لم يتم العثور على بطاقة ولاء لهذا التاجر' });
   }
   res.json(card);
-});
-
-// Public metadata fetching for customer view (Dynamic Pass Card)
-app.get('/api/public/cards/:id', (req, res) => {
-  const db = readDB();
-  const customer = db.customers.find(c => c.id === req.params.id);
-  if (!customer) {
-    return res.status(404).json({ error: 'العميل غير موجود' });
-  }
-
-  const card = db.loyalty_cards.find(c => c.merchantId === customer.merchantId);
-  if (!card) {
-    return res.status(404).json({ error: 'البطاقة غير موجودة' });
-  }
-
-  res.json({ customer, card });
 });
 
 app.post('/api/loyalty-cards', requireAuth, requirePermission('canManageSettings'), (req, res) => {
@@ -290,80 +380,91 @@ app.post('/api/loyalty-cards', requireAuth, requirePermission('canManageSettings
 });
 
 // ----------------------------------------
-// Customers API (With Isolation & Permissions)
+// Branches Management API
 // ----------------------------------------
-
-// Fetch all customers for current logged-in merchant
-app.get('/api/customers', requireAuth, (req, res) => {
+app.get('/api/branches', requireAuth, (req, res) => {
   const db = readDB();
-  const customers = db.customers.filter(c => c.merchantId === req.merchantId);
-  res.json(customers);
+  const list = db.branches.filter(b => b.merchantId === req.merchantId);
+  res.json(list);
 });
 
-// Fetch search customers
-app.get('/api/customers/search', requireAuth, (req, res) => {
+app.post('/api/branches', requireAuth, requirePermission('canManageSettings'), (req, res) => {
   const db = readDB();
-  const query = (req.query.q || '').toLowerCase();
-  const customers = db.customers.filter(c =>
-    c.merchantId === req.merchantId &&
-    (c.name.toLowerCase().includes(query) || c.phone.includes(query))
-  );
-  res.json(customers);
-});
+  const { name, address } = req.body;
 
-// Register new customer by merchant staff
-app.post('/api/customers', requireAuth, requirePermission('canEnrollCustomer'), (req, res) => {
-  const db = readDB();
-  const { name, phone } = req.body;
-  if (!name || !phone) {
-    return res.status(400).json({ error: 'الاسم ورقم الجوال مطلوبان لتسجيل العميل' });
+  if (!name) {
+    return res.status(400).json({ error: 'اسم الفرع مطلوب' });
   }
 
-  const card = db.loyalty_cards.find(c => c.merchantId === req.merchantId);
-  const stampsGoal = card ? card.stampsGoal : 10;
+  // Check Branch Limit according to plan
+  const merchant = db.merchants.find(m => m.id === req.merchantId);
+  const planId = merchant ? merchant.planId : 'free';
+  const maxBranches = planId === 'free' ? 1 : (planId === 'growth' ? 3 : -1);
 
-  const customerId = `cust_${Date.now()}`;
-  const newCustomer = {
-    id: customerId,
+  const currentCount = db.branches.filter(b => b.merchantId === req.merchantId).length;
+  if (maxBranches !== -1 && currentCount >= maxBranches) {
+    return res.status(403).json({ error: `لقد تجاوزت الحد المسموح به لخطة اشتراكك الحالية (${maxBranches} فرع). يرجى الترقية لإضافة فروع إضافية.` });
+  }
+
+  const branchId = `branch_${Date.now()}`;
+  const newBranch = {
+    id: branchId,
     merchantId: req.merchantId,
     name,
-    phone,
-    stampsCollected: 0,
-    stampsGoal,
-    lastStampedTime: null,
-    rewardsClaimed: 0,
+    address: address || '',
+    qr_code_value: `qr_${req.merchantId}_${Date.now()}`,
     createdAt: new Date().toISOString()
   };
 
-  db.customers.push(newCustomer);
-
-  // Log action
-  db.stamps_log.unshift({
-    id: `log_${Date.now()}`,
-    merchantId: req.merchantId,
-    customerId,
-    customerName: name,
-    type: 'enroll',
-    timestamp: new Date().toISOString(),
-    details: 'تم تسجيل عميل جديد في البرنامج عبر الموظف.'
-  });
-
+  db.branches.push(newBranch);
   writeDB(db);
-  res.json({ success: true, customer: newCustomer });
+  res.json({ success: true, branch: newBranch });
 });
 
-// Public Self-Enrollment (Customer scans a QR in branch to register themselves)
-app.post('/api/customers/self-enroll', (req, res) => {
+// ----------------------------------------
+// Customers Self-Enrollment & Fetch
+// ----------------------------------------
+app.get('/api/public/cards/:id', (req, res) => {
   const db = readDB();
-  const { name, phone, merchantId } = req.body;
-
-  if (!name || !phone || !merchantId) {
-    return res.status(400).json({ error: 'البيانات المرسلة غير مكتملة' });
+  const customer = db.customers.find(c => c.id === req.params.id);
+  if (!customer) {
+    return res.status(404).json({ error: 'العميل غير موجود' });
   }
 
-  const merchantExists = db.merchants.find(m => m.id === merchantId);
-  if (!merchantExists) {
-    return res.status(404).json({ error: 'المنشأة التجارية غير مسجلة لدينا' });
+  const card = db.loyalty_cards.find(c => c.merchantId === customer.merchantId);
+  if (!card) {
+    return res.status(404).json({ error: 'البطاقة غير موجودة' });
+  }
+
+  res.json({ customer, card });
+});
+
+// Public Self-Enrollment via Scanning Branch QR
+app.post('/api/customers/self-enroll', (req, res) => {
+  const db = readDB();
+  const { name, phone, branchQrCode } = req.body;
+
+  if (!name || !phone || !branchQrCode) {
+    return res.status(400).json({ error: 'الرجاء إدخال الاسم، رقم الجوال ورمز الفرع' });
+  }
+
+  // Find branch matching qr_code_value
+  const branch = db.branches.find(b => b.qr_code_value === branchQrCode);
+  if (!branch) {
+    return res.status(404).json({ error: 'كود الفرع الممسوح غير صحيح أو لم يعد فعالاً' });
+  }
+
+  const merchantId = branch.merchantId;
+
+  // Plan limit check via canAddCustomer
+  if (!canAddCustomer(merchantId, db)) {
+    return res.status(403).json({ error: 'تجاوزت هذه المنشأة التجارية الحد الأقصى للمشتركين في الخطة الحالية. يرجى إشعار المتجر للترقية.' });
+  }
+
+  // Avoid duplicate enrolments in the same merchant
+  let customer = db.customers.find(c => c.merchantId === merchantId && c.phone === phone);
+  if (customer) {
+    return res.json({ success: true, customer, message: 'أنت مسجل بالفعل في هذا البرنامج!' });
   }
 
   const card = db.loyalty_cards.find(c => c.merchantId === merchantId);
@@ -379,20 +480,21 @@ app.post('/api/customers/self-enroll', (req, res) => {
     stampsGoal,
     lastStampedTime: null,
     rewardsClaimed: 0,
+    enrollment_source: 'self_qr',
     createdAt: new Date().toISOString()
   };
 
   db.customers.push(newCustomer);
 
-  // Log action
   db.stamps_log.unshift({
     id: `log_${Date.now()}`,
     merchantId,
     customerId,
+    branchId: branch.id,
     customerName: name,
     type: 'enroll',
     timestamp: new Date().toISOString(),
-    details: 'تم التسجيل الذاتي للعميل عبر مسح QR الفرع.'
+    details: `تم التسجيل الذاتي للعميل بنجاح عبر فرع: ${branch.name}`
   });
 
   writeDB(db);
@@ -400,60 +502,76 @@ app.post('/api/customers/self-enroll', (req, res) => {
 });
 
 // ----------------------------------------
-// Stamping Action (Multi-Tenant Secure)
+// Core Stamping API with anti-fraud & quotas
 // ----------------------------------------
-app.post('/api/stamps', requireAuth, requirePermission('canStamp'), (req, res) => {
+app.post('/api/stamps/add', requireAuth, requirePermission('canStamp'), (req, res) => {
   const db = readDB();
-  const { customerId } = req.body;
+  const { customerId, branchId } = req.body;
 
   if (!customerId) {
-    return res.status(400).json({ error: 'معرّف العميل مطلوب لإتمام العملية' });
+    return res.status(400).json({ error: 'معرّف العميل مطلوب لإتمام عملية الختم' });
   }
 
-  // Find and isolate customer belonging to this merchant only
-  const customer = db.customers.find(c => c.id === customerId && c.merchantId === req.merchantId);
-  if (!customer) {
-    return res.status(404).json({ error: 'لم يتم العثور على هذا العميل ضمن قائمتك' });
+  const result = addStampSimulated(customerId, req.staffId, branchId, db);
+  if (!result.success) {
+    return res.status(result.seconds_remaining ? 429 : 400).json({ error: result.error, seconds_remaining: result.seconds_remaining });
+  }
+
+  writeDB(db);
+  res.json(result);
+});
+
+// Existing compatibility routes
+app.get('/api/customers', requireAuth, (req, res) => {
+  const db = readDB();
+  const customers = db.customers.filter(c => c.merchantId === req.merchantId);
+  res.json(customers);
+});
+
+app.post('/api/customers', requireAuth, requirePermission('canEnrollCustomer'), (req, res) => {
+  const db = readDB();
+  const { name, phone } = req.body;
+  if (!name || !phone) {
+    return res.status(400).json({ error: 'الاسم ورقم الجوال مطلوبان لتسجيل العميل' });
+  }
+
+  if (!canAddCustomer(req.merchantId, db)) {
+    return res.status(403).json({ error: 'تجاوزت هذه المنشأة التجارية الحد الأقصى للمشتركين في الخطة الحالية. يرجى ترقية الاشتراك لإضافة عملاء جدد.' });
   }
 
   const card = db.loyalty_cards.find(c => c.merchantId === req.merchantId);
-  const cooldownMinutes = card ? card.cooldownMinutes : 1;
-  const now = new Date();
+  const stampsGoal = card ? card.stampsGoal : 10;
 
-  // Cooldown / Anti-Fraud Check
-  if (customer.lastStampedTime) {
-    const lastStamped = new Date(customer.lastStampedTime);
-    const diffMs = now - lastStamped;
-    const diffMins = diffMs / (1000 * 60);
+  const customerId = `cust_${Date.now()}`;
+  const newCustomer = {
+    id: customerId,
+    merchantId: req.merchantId,
+    name,
+    phone,
+    stampsCollected: 0,
+    stampsGoal,
+    lastStampedTime: null,
+    rewardsClaimed: 0,
+    enrollment_source: 'manual',
+    createdAt: new Date().toISOString()
+  };
 
-    if (diffMins < cooldownMinutes) {
-      const waitSeconds = Math.ceil((cooldownMinutes - diffMins) * 60);
-      return res.status(429).json({
-        error: `حماية ضد الاحتيال مفعّلة: الرجاء الانتظار ${waitSeconds} ثانية قبل ختم العميل مجدداً`
-      });
-    }
-  }
+  db.customers.push(newCustomer);
 
-  // Update customer stamps count
-  customer.stampsCollected += 1;
-  customer.lastStampedTime = now.toISOString();
-
-  // Log stamp
   db.stamps_log.unshift({
     id: `log_${Date.now()}`,
     merchantId: req.merchantId,
-    customerId: customer.id,
-    customerName: customer.name,
-    type: 'stamp',
-    timestamp: now.toISOString(),
-    details: `تم إضافة ختم. المجموع الحالي: ${customer.stampsCollected} / ${customer.stampsGoal}`
+    customerId,
+    customerName: name,
+    type: 'enroll',
+    timestamp: new Date().toISOString(),
+    details: 'تم تسجيل عميل جديد في البرنامج عبر لوحة التحكم.'
   });
 
   writeDB(db);
-  res.json({ success: true, customer });
+  res.json({ success: true, customer: newCustomer });
 });
 
-// Customer Reward Redemption
 app.post('/api/customers/:id/redeem', requireAuth, requirePermission('canStamp'), (req, res) => {
   const db = readDB();
   const customer = db.customers.find(c => c.id === req.params.id && c.merchantId === req.merchantId);
@@ -470,7 +588,6 @@ app.post('/api/customers/:id/redeem', requireAuth, requirePermission('canStamp')
   customer.stampsCollected -= stampsGoal;
   customer.rewardsClaimed += 1;
 
-  // Log redemption
   db.stamps_log.unshift({
     id: `log_${Date.now()}`,
     merchantId: req.merchantId,
@@ -491,7 +608,6 @@ app.post('/api/customers/:id/redeem', requireAuth, requirePermission('canStamp')
 app.get('/api/staff', requireAuth, requirePermission('isOwner'), (req, res) => {
   const db = readDB();
   const staffList = db.merchant_staff.filter(s => s.merchantId === req.merchantId);
-  // Hide password hashes
   const safeStaffList = staffList.map(s => {
     const { passwordHash, ...rest } = s;
     return rest;
@@ -501,10 +617,10 @@ app.get('/api/staff', requireAuth, requirePermission('isOwner'), (req, res) => {
 
 app.post('/api/staff', requireAuth, requirePermission('isOwner'), async (req, res) => {
   const db = readDB();
-  const { name, email, password, canStamp, canEnrollCustomer, canViewReports, canManageSettings } = req.body;
+  const { name, email, password, branchId, canStamp, canEnrollCustomer, canViewReports, canManageSettings } = req.body;
 
   if (!name || !email || !password) {
-    return res.status(400).json({ error: 'البيانات الأساسية للموظف (الاسم، البريد، كلمة المرور) مطلوبة' });
+    return res.status(400).json({ error: 'البيانات الأساسية للموظف مطلوبة' });
   }
 
   const existingStaff = db.merchant_staff.find(s => s.email.toLowerCase() === email.toLowerCase());
@@ -512,10 +628,21 @@ app.post('/api/staff', requireAuth, requirePermission('isOwner'), async (req, re
     return res.status(400).json({ error: 'هذا البريد الإلكتروني مسجل بالفعل لموظف آخر' });
   }
 
+  // Check Staff Quota Limits
+  const merchant = db.merchants.find(m => m.id === req.merchantId);
+  const planId = merchant ? merchant.planId : 'free';
+  const maxStaff = planId === 'free' ? 1 : (planId === 'growth' ? 5 : -1);
+
+  const currentStaffCount = db.merchant_staff.filter(s => s.merchantId === req.merchantId && !s.isOwner).length;
+  if (maxStaff !== -1 && currentStaffCount >= maxStaff) {
+    return res.status(403).json({ error: `لقد تجاوزت الحد الأقصى للموظفين المتاحين لخطة اشتراكك الحالية (${maxStaff} موظفين). يرجى الترقية لتفعيل حسابات إضافية.` });
+  }
+
   const passwordHash = await bcrypt.hash(password, 10);
   const newStaff = {
     id: `staff_${Date.now()}`,
     merchantId: req.merchantId,
+    branchId: branchId || null,
     name,
     email: email.toLowerCase(),
     passwordHash,
@@ -535,7 +662,7 @@ app.post('/api/staff', requireAuth, requirePermission('isOwner'), async (req, re
 });
 
 // ----------------------------------------
-// Reports & Push Logs API
+// Reports & Logs API
 // ----------------------------------------
 app.get('/api/reports/overview', requireAuth, requirePermission('canViewReports'), (req, res) => {
   const db = readDB();
@@ -588,7 +715,6 @@ app.post('/api/notifications', requireAuth, requirePermission('canManageSettings
 
   db.notifications_log.unshift(newPush);
 
-  // Log action
   db.stamps_log.unshift({
     id: `log_${Date.now()}`,
     merchantId: req.merchantId,
@@ -601,6 +727,24 @@ app.post('/api/notifications', requireAuth, requirePermission('canManageSettings
 
   writeDB(db);
   res.json({ success: true, push: newPush });
+});
+
+// Fetch Public Branch Metadata for customer view
+app.get('/api/public/branches/:qr', (req, res) => {
+  const db = readDB();
+  const branch = db.branches.find(b => b.qr_code_value === req.params.qr);
+  if (!branch) {
+    return res.status(404).json({ error: 'الفرع غير موجود' });
+  }
+
+  const merchant = db.merchants.find(m => m.id === branch.merchantId);
+  const card = db.loyalty_cards.find(c => c.merchantId === branch.merchantId);
+
+  res.json({
+    branch: { id: branch.id, name: branch.name, address: branch.address },
+    merchant: { businessName: merchant ? merchant.businessName : '' },
+    card: card ? { programName: card.programName, hexBackgroundColor: card.hexBackgroundColor, stampEmoji: card.stampEmoji, stampsGoal: card.stampsGoal, rewardName: card.rewardName } : null
+  });
 });
 
 // Start Server
