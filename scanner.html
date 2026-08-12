@@ -433,7 +433,7 @@
 
     if (!useFallback) {
       try {
-        const res = await fetch('/api/stamps', {
+        const res = await fetch('/api/stamps/add', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

@@ -28,6 +28,15 @@ const DEFAULT_STATE = {
       canManageSettings: true
     }
   ],
+  branches: [
+    {
+      id: "branch_default",
+      merchantId: "merchant_default",
+      name: "الفرع الرئيسي",
+      address: "الرياض، المملكة العربية السعودية",
+      qr_code_value: "qr_merchant_default_main"
+    }
+  ],
   loyalty_cards: [
     {
       id: "card_default",
@@ -92,6 +101,10 @@ async function detectModeAndSession() {
     }
   }
 
+  // Parse query string plan parameter if any
+  const urlParams = new URLSearchParams(window.location.search);
+  const planParam = urlParams.get('plan') || 'free';
+
   if (currentToken) {
     if (!useFallback) {
       try {
@@ -121,6 +134,18 @@ async function detectModeAndSession() {
     }
   } else {
     document.getElementById('auth-overlay').style.display = 'flex';
+    if (planParam) {
+      let pInput = document.getElementById('reg-plan-id');
+      if (!pInput) {
+        pInput = document.createElement('input');
+        pInput.type = 'hidden';
+        pInput.id = 'reg-plan-id';
+        pInput.value = planParam;
+        document.getElementById('register-form').appendChild(pInput);
+      } else {
+        pInput.value = planParam;
+      }
+    }
   }
 }
 
@@ -158,19 +183,20 @@ async function handleRegister(e) {
   const phone = document.getElementById('reg-phone').value;
   const email = document.getElementById('reg-email').value;
   const password = document.getElementById('reg-password').value;
+  const planId = document.getElementById('reg-plan-id') ? document.getElementById('reg-plan-id').value : 'free';
 
   if (!useFallback) {
     try {
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ businessName, ownerName, email, phone, password })
+        body: JSON.stringify({ businessName, ownerName, email, phone, password, planId })
       });
       const data = await res.json();
       if (res.ok) {
         currentToken = data.token;
         localStorage.setItem('khatm_token', currentToken);
-        alert('🎉 تم إنشاء حساب التاجر بنجاح وتوليد الهوية!');
+        alert('🎉 تم إنشاء حساب التاجر بنجاح وتوليد الهوية والفرع الرئيسي!');
         await detectModeAndSession();
       } else {
         alert(`خطأ: ${data.error}`);
@@ -190,13 +216,24 @@ async function handleRegister(e) {
     const merchantId = `merchant_${Date.now()}`;
     const staffId = `staff_${Date.now()}`;
     const cardId = `card_${Date.now()}`;
+    const branchId = `branch_${Date.now()}`;
 
     db.merchants.push({
       id: merchantId,
       businessName,
       ownerName,
       email,
-      phone
+      phone,
+      planId
+    });
+
+    if (!db.branches) db.branches = [];
+    db.branches.push({
+      id: branchId,
+      merchantId,
+      name: 'الفرع الرئيسي',
+      address: 'الرياض، المملكة العربية السعودية',
+      qr_code_value: `qr_${merchantId}_main`
     });
 
     const permissions = {
@@ -210,6 +247,7 @@ async function handleRegister(e) {
     db.merchant_staff.push({
       id: staffId,
       merchantId,
+      branchId,
       name: ownerName,
       email: email.toLowerCase(),
       ...permissions
@@ -236,7 +274,8 @@ async function handleRegister(e) {
       name: ownerName,
       email,
       businessName,
-      permissions
+      permissions,
+      planId
     };
 
     localStorage.setItem('khatm_session_v2', JSON.stringify(currentUser));
@@ -325,10 +364,12 @@ function showAppAndSetup() {
   // Manage settings permission
   if (!p.canManageSettings) {
     document.getElementById('btn-customizer').style.display = 'none';
+    document.getElementById('btn-branches').style.display = 'none';
     document.getElementById('btn-push').style.display = 'none';
     switchSection('customers');
   } else {
     document.getElementById('btn-customizer').style.display = 'flex';
+    document.getElementById('btn-branches').style.display = 'flex';
     document.getElementById('btn-push').style.display = 'flex';
     switchSection('customizer');
   }
@@ -370,12 +411,115 @@ function switchSection(sectionId) {
 
   if (sectionId === 'customizer') {
     loadMerchantSettings();
+  } else if (sectionId === 'branches') {
+    loadBranches();
   } else if (sectionId === 'customers') {
     loadCustomers();
   } else if (sectionId === 'staff') {
     loadStaff();
   } else if (sectionId === 'logs') {
     loadLogsAndStats();
+  }
+}
+
+// ----------------------------------------
+// 1.5) Branches Management Logic
+// ----------------------------------------
+async function loadBranches() {
+  let list = [];
+  if (!useFallback) {
+    try {
+      const res = await fetch('/api/branches', {
+        headers: { 'Authorization': `Bearer ${currentToken}` }
+      });
+      if (res.ok) list = await res.json();
+    } catch (e) {}
+  } else {
+    const db = getLocalDB();
+    list = db.branches ? db.branches.filter(b => b.merchantId === currentUser.merchantId) : [];
+  }
+
+  const tbody = document.getElementById('branches-table-body');
+  tbody.innerHTML = '';
+
+  list.forEach(b => {
+    const tr = document.createElement('tr');
+    const joinUrl = `${window.location.origin}/join.html?branch=${b.qr_code_value}`;
+    tr.innerHTML = `
+      <td style="font-weight:700;">${b.name}</td>
+      <td>${b.address || '—'}</td>
+      <td class="mono" style="color: var(--stamp); font-weight:700;">${b.qr_code_value}</td>
+      <td>
+        <a href="${joinUrl}" target="_blank" class="btn btn-ghost" style="padding:4px 10px; font-size:0.8rem; border:1px solid var(--ink);">فتح صفحة التسجيل الذاتي للعميل 🔗</a>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  // Populate branch selections in staff form dynamically
+  const select = document.getElementById('staffBranchSelect');
+  if (select) {
+    select.innerHTML = '<option value="">كل الفروع (عام)</option>';
+    list.forEach(b => {
+      const opt = document.createElement('option');
+      opt.value = b.id;
+      opt.innerText = b.name;
+      select.appendChild(opt);
+    });
+  }
+}
+
+async function addBranch(e) {
+  e.preventDefault();
+  const name = document.getElementById('branchNameInput').value;
+  const address = document.getElementById('branchAddressInput').value;
+
+  if (!useFallback) {
+    try {
+      const res = await fetch('/api/branches', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${currentToken}`
+        },
+        body: JSON.stringify({ name, address })
+      });
+      if (res.ok) {
+        document.getElementById('branch-form').reset();
+        loadBranches();
+        alert('✅ تم إضافة الفرع الجديد بنجاح!');
+      } else {
+        const err = await res.json();
+        alert(`خطأ: ${err.error}`);
+      }
+    } catch (e) {
+      alert('خطأ اتصال بالإنترنت.');
+    }
+  } else {
+    const db = getLocalDB();
+    if (!db.branches) db.branches = [];
+
+    // Check branch quota
+    const maxBranches = currentUser.planId === 'free' ? 1 : (currentUser.planId === 'growth' ? 3 : -1);
+    const currentCount = db.branches.filter(b => b.merchantId === currentUser.merchantId).length;
+    if (maxBranches !== -1 && currentCount >= maxBranches) {
+      alert(`خطأ: لقد تجاوزت الحد الأقصى للفروع في خطتك الحالية (${maxBranches} فرع). يرجى الترقية.`);
+      return;
+    }
+
+    const branchId = `branch_${Date.now()}`;
+    db.branches.push({
+      id: branchId,
+      merchantId: currentUser.merchantId,
+      name,
+      address,
+      qr_code_value: `qr_${currentUser.merchantId}_${Date.now()}`
+    });
+
+    saveLocalDB(db);
+    document.getElementById('branch-form').reset();
+    loadBranches();
+    alert('✅ تم إضافة الفرع الجديد ديمو بنجاح!');
   }
 }
 
@@ -555,6 +699,15 @@ async function enrollCustomer(e) {
     }
   } else {
     const db = getLocalDB();
+
+    // Check client limits
+    const limit = currentUser.planId === 'free' ? 100 : -1;
+    const count = db.customers.filter(c => c.merchantId === currentUser.merchantId).length;
+    if (limit !== -1 && count >= limit) {
+      alert('خطأ: تجاوزت هذه المنشأة الحد الأقصى للمشتركين في الخطة الحالية (100 عميل). يرجى الترقية.');
+      return;
+    }
+
     const card = db.loyalty_cards.find(c => c.merchantId === currentUser.merchantId) || DEFAULT_STATE.loyalty_cards[0];
 
     const customerId = `cust_${Date.now()}`;
@@ -626,13 +779,14 @@ async function addStaffMember(e) {
   const name = document.getElementById('staffName').value;
   const email = document.getElementById('staffEmail').value;
   const password = document.getElementById('staffPassword').value;
+  const branchId = document.getElementById('staffBranchSelect').value;
 
   const canStamp = document.getElementById('permStamp').checked;
   const canEnrollCustomer = document.getElementById('permEnroll').checked;
   const canViewReports = document.getElementById('permReports').checked;
   const canManageSettings = document.getElementById('permSettings').checked;
 
-  const staffData = { name, email, password, canStamp, canEnrollCustomer, canViewReports, canManageSettings };
+  const staffData = { name, email, password, branchId, canStamp, canEnrollCustomer, canViewReports, canManageSettings };
 
   if (!useFallback) {
     try {
@@ -663,9 +817,18 @@ async function addStaffMember(e) {
       return;
     }
 
+    // Check staff quota
+    const maxStaff = currentUser.planId === 'free' ? 1 : (currentUser.planId === 'growth' ? 5 : -1);
+    const count = db.merchant_staff.filter(s => s.merchantId === currentUser.merchantId && !s.isOwner).length;
+    if (maxStaff !== -1 && count >= maxStaff) {
+      alert(`خطأ: لقد تجاوزت الحد الأقصى للموظفين في خطتك الحالية (${maxStaff} موظفين). يرجى الترقية.`);
+      return;
+    }
+
     db.merchant_staff.push({
       id: `staff_${Date.now()}`,
       merchantId: currentUser.merchantId,
+      branchId,
       name,
       email: email.toLowerCase(),
       isOwner: false,

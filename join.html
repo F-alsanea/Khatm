@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>انضم لبرنامج الولاء — ختم</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@500;700;800;900&family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<style>
+  body {
+    background: var(--parchment);
+    color: var(--ink);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 20px;
+  }
+  .join-card {
+    background: #fff;
+    border: 2px solid var(--ink);
+    border-radius: 24px;
+    padding: 34px 28px;
+    max-width: 440px;
+    width: 100%;
+    box-shadow: 0 30px 60px -15px rgba(22,35,63,0.25);
+    text-align: center;
+  }
+  .join-title {
+    font-family: 'Cairo', sans-serif;
+    font-weight: 900;
+    font-size: 1.6rem;
+    color: var(--ink);
+    margin-bottom: 8px;
+  }
+  .join-subtitle {
+    font-size: 0.95rem;
+    color: var(--ink-soft);
+    margin-bottom: 24px;
+  }
+  .error-message {
+    color: var(--stamp);
+    font-weight: 700;
+    margin-top: 15px;
+    display: none;
+  }
+</style>
+</head>
+<body>
+
+<div class="join-card" id="join-card">
+  <div class="logo" style="margin-bottom: 20px; font-size: 1.8rem; display: flex; justify-content: center;">
+    <span class="seal">خ</span>ختم
+  </div>
+
+  <div id="loading-state">
+    <p>جاري جلب معلومات فرع المتجر وبطاقة الولاء الرقمية...</p>
+  </div>
+
+  <div id="enrollment-form-container" style="display: none;">
+    <div class="join-title" id="merchant-name">محمصة السنبلة</div>
+    <div class="join-subtitle" id="branch-info">فرع الرياض الرئيسي</div>
+
+    <!-- Live Preview Card Inside Join Flow -->
+    <div class="card-mock" id="join-card-preview" style="margin: 0 auto 24px; transform: scale(0.95); background-color: rgb(30, 48, 80);">
+      <div class="brand-row"><span id="preview-brand">...</span><span id="preview-program">بطاقة ولاء</span></div>
+      <h3 id="preview-reward" style="border:none; margin:0; padding:0; font-size:1.15rem; color:#fff;">...</h3>
+      <div class="sub" id="preview-sub">0 من 10 أختام</div>
+      <div class="stamp-row" id="preview-stamp-row">
+        <!-- populated -->
+      </div>
+      <div class="reward-row"><span>جاهزة للمحفظة الرقمية</span><span class="mono">#KHATM</span></div>
+    </div>
+
+    <form id="enroll-form" onsubmit="handleEnroll(event)">
+      <div class="form-group" style="text-align: right;">
+        <label for="cust-name">الاسم الكامل</label>
+        <input type="text" id="cust-name" placeholder="عبدالعزيز بن محمد" required>
+      </div>
+      <div class="form-group" style="text-align: right;">
+        <label for="cust-phone">رقم الجوال</label>
+        <input type="tel" id="cust-phone" placeholder="05xxxxxxxx" required>
+      </div>
+      <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center; margin-top: 10px;">انضمام وإصدار بطاقة الولاء ✨</button>
+    </form>
+    <div class="error-message" id="error-msg"></div>
+  </div>
+
+  <!-- Success State -->
+  <div id="success-state" style="display: none;">
+    <div style="font-size: 4rem; margin-bottom: 10px;">🎉</div>
+    <h3 style="font-family:'Cairo'; font-weight:900; margin-bottom: 8px;">مرحباً بك معنا!</h3>
+    <p style="font-size: 0.95rem; color: var(--ink-soft); margin-bottom: 24px;" id="success-text">تم تسجيلك بنجاح في برنامج الولاء الرقمي.</p>
+
+    <div style="display: flex; flex-direction: column; gap: 14px; align-items: center;">
+      <!-- Google Wallet button simulator -->
+      <a id="wallet-download-link" href="#" target="_blank" class="btn btn-primary" style="background: #000; color: #fff; width: 100%; justify-content: center; border-color: #000;">
+        🖤 إضافة إلى Apple Wallet / Google Wallet
+      </a>
+      <a href="index.html" class="btn btn-ghost" style="font-size: 0.9rem;">العودة للرئيسية</a>
+    </div>
+  </div>
+</div>
+
+<script>
+  let branchQr = '';
+
+  function getQueryParam(name) {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get(name);
+  }
+
+  async function loadBranchDetails() {
+    branchQr = getQueryParam('branch') || getQueryParam('qr') || '';
+    if (!branchQr) {
+      document.getElementById('loading-state').innerHTML = '<p style="color:var(--stamp); font-weight:700;">خطأ: كود الفرع غير معروف. يرجى مسح كود QR صالح للفرع.</p>';
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/public/branches/${branchQr}`);
+      if (!res.ok) {
+        throw new Error();
+      }
+      const data = await res.json();
+
+      document.getElementById('loading-state').style.display = 'none';
+      document.getElementById('enrollment-form-container').style.display = 'block';
+
+      document.getElementById('merchant-name').innerText = data.merchant.businessName;
+      document.getElementById('branch-info').innerText = `بوابة انضمام العميل: ${data.branch.name}`;
+
+      if (data.card) {
+        document.getElementById('preview-brand').innerText = data.merchant.businessName;
+        document.getElementById('preview-program').innerText = data.card.programName;
+        document.getElementById('preview-reward').innerText = data.card.rewardName;
+        document.getElementById('join-card-preview').style.backgroundColor = data.card.hexBackgroundColor;
+
+        const goal = parseInt(data.card.stampsGoal) || 10;
+        const emoji = data.card.stampEmoji || '☕';
+        document.getElementById('preview-sub').innerText = `0 من ${goal} أختام`;
+
+        const row = document.getElementById('preview-stamp-row');
+        row.innerHTML = '';
+        for (let i = 1; i <= goal; i++) {
+          const dot = document.createElement('div');
+          dot.className = 'stamp-dot';
+          dot.innerText = '·';
+          row.appendChild(dot);
+        }
+      }
+    } catch (e) {
+      document.getElementById('loading-state').innerHTML = '<p style="color:var(--stamp); font-weight:700;">خطأ: فشل في العثور على الفرع المطلوب. يرجى التأكد من الرمز والمحاولة مجدداً.</p>';
+    }
+  }
+
+  async function handleEnroll(e) {
+    e.preventDefault();
+    const name = document.getElementById('cust-name').value;
+    const phone = document.getElementById('cust-phone').value;
+    const errorMsg = document.getElementById('error-msg');
+
+    errorMsg.style.display = 'none';
+
+    try {
+      const res = await fetch('/api/customers/self-enroll', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, phone, branchQrCode: branchQr })
+      });
+      const data = await res.json();
+
+      if (res.ok) {
+        document.getElementById('enrollment-form-container').style.display = 'none';
+        document.getElementById('success-state').style.display = 'block';
+        document.getElementById('success-text').innerText = `أهلاً بك ${data.customer.name}! لقد تم تسجيلك بنجاح في برنامج الولاء.`;
+
+        // Simulating Apple/Google Wallet Save link
+        const passUrl = `${window.location.origin}/card.html?id=${data.customer.id}`;
+        document.getElementById('wallet-download-link').href = passUrl;
+      } else {
+        errorMsg.innerText = data.error;
+        errorMsg.style.display = 'block';
+      }
+    } catch (err) {
+      errorMsg.innerText = 'فشل الاتصال بالإنترنت لتسجيل البطاقة.';
+      errorMsg.style.display = 'block';
+    }
+  }
+
+  window.addEventListener('DOMContentLoaded', loadBranchDetails);
+</script>
+</body>
+</html>
