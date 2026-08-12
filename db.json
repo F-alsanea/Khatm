@@ -11,6 +11,16 @@
       "createdAt": "2026-08-11T12:00:00.000Z"
     },
     {
+      "id": "merchant_faisal",
+      "businessName": "منصة ختم الإدارية",
+      "ownerName": "فيصل الصانع",
+      "email": "falsanea@aol.com",
+      "phone": "0500000000",
+      "planId": "premium",
+      "status": "active",
+      "createdAt": "2026-08-12T00:00:00.000Z"
+    },
+    {
       "id": "merchant_1786490609138",
       "businessName": "محمصة الرياض",
       "ownerName": "سلطان الحربي",
@@ -37,13 +47,26 @@
       "merchantId": "merchant_default",
       "name": "عبدالله محمد",
       "email": "owner@sonbola.com",
-      "passwordHash": "$2b$10$wO08Ppx2K89p4Nbe0F.m8On7L.Z0M.Sshn4n7mC/IHeS0/OWee/zG",
+      "passwordHash": "$2a$10$JP.QJhTKl5.IGm94oVWOCeAUDMXHcQM91pX4Il73UJMXXn8gE2xAe",
       "isOwner": true,
       "canStamp": true,
       "canEnrollCustomer": true,
       "canViewReports": true,
       "canManageSettings": true,
       "createdAt": "2026-08-11T12:00:00.000Z"
+    },
+    {
+      "id": "staff_faisal",
+      "merchantId": "merchant_faisal",
+      "name": "فيصل الصانع",
+      "email": "falsanea@aol.com",
+      "passwordHash": "$2a$10$JP.QJhTKl5.IGm94oVWOCeAUDMXHcQM91pX4Il73UJMXXn8gE2xAe",
+      "isOwner": true,
+      "canStamp": true,
+      "canEnrollCustomer": true,
+      "canViewReports": true,
+      "canManageSettings": true,
+      "createdAt": "2026-08-12T00:00:00.000Z"
     },
     {
       "id": "staff_1786490609138",
@@ -72,6 +95,22 @@
       "createdAt": "2026-08-11T23:26:40.258Z"
     }
   ],
+  "branches": [
+    {
+      "id": "branch_default",
+      "merchantId": "merchant_default",
+      "name": "الفرع الرئيسي",
+      "address": "الرياض، المملكة العربية السعودية",
+      "qr_code_value": "qr_merchant_default_main"
+    },
+    {
+      "id": "branch_faisal",
+      "merchantId": "merchant_faisal",
+      "name": "الفرع الرئيسي",
+      "address": "الرياض، المملكة العربية السعودية",
+      "qr_code_value": "qr_merchant_faisal_main"
+    }
+  ],
   "loyalty_cards": [
     {
       "id": "card_default",
@@ -83,6 +122,18 @@
       "stampsGoal": 10,
       "stampEmoji": "☕",
       "rewardName": "القهوة العاشرة مجاناً",
+      "cooldownMinutes": 1
+    },
+    {
+      "id": "card_faisal",
+      "merchantId": "merchant_faisal",
+      "brandName": "منصة ختم الإدارية",
+      "programName": "بطاقة النخبة المميزة",
+      "logoUrl": "https://example.com/logo.png",
+      "hexBackgroundColor": "#1E3050",
+      "stampsGoal": 10,
+      "stampEmoji": "⭐",
+      "rewardName": "مكافأة ترحيبية خاصة",
       "cooldownMinutes": 1
     },
     {
